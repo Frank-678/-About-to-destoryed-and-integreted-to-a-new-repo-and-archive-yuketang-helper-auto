@@ -1,6 +1,5 @@
 import { ui } from '../ui/ui-api.js';
 import { repo } from '../state/repo.js';
-import { chooseAnswerRoute } from './answer-routing.js';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, Math.max(0, ms|0))); }
 function calcAutoWaitMs() {
@@ -149,9 +148,8 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
 
   const now = Date.now();
   const pastDeadline = typeof endTime === 'number' && now >= endTime;
-  const route = chooseAnswerRoute({ now, endTime, forceRetry });
 
-  if (route === 'retry') {
+  if (pastDeadline || forceRetry) {
 
     console.group('[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断');
     console.log('problemId:', problem.problemId);
