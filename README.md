@@ -28,6 +28,10 @@
 
 > 最后更新时间：2026.09.09
 
+## 项目继承
+
+- 继承自https://github.com/ZaytsevZY/yuketang-helper-auto
+
 ## 项目说明
 
 - 项目灵感来自于：[雨课堂助手](https://github.com/hotwords123/yuketang-helper.git)，本项目已兼容`ykt-helper v1.5.1`。
