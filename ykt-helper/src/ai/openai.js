@@ -21,7 +21,7 @@ function mapProblemTypeToQuestionType(problemType) {
   }
 }
 
-function getActiveProfile(aiCfg, profileId = null) {
+function getActiveProfile(aiCfg) {
   const cfg = aiCfg || {};
   const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
   if (!profiles.length) {
@@ -36,8 +36,8 @@ function getActiveProfile(aiCfg, profileId = null) {
       visionModel: 'moonshot-v1-8k-vision-preview',
     };
   }
-  const activeId = profileId ?? cfg.activeProfileId;
-  let p = profiles.find(profile => String(profile.id) === String(activeId));
+  const activeId = cfg.activeProfileId;
+  let p = profiles.find(p => p.id === activeId);
   if (!p) p = profiles[0];
   if (!p.baseUrl) p.baseUrl = 'https://api.moonshot.cn/v1/chat/completions';
   return p;
@@ -95,8 +95,8 @@ const VISION_GUIDE = [
 /**
  * 通用 OpenAI 协议文本模型调用
  */
-export async function queryAI(question, aiCfg, options = {}) {
-  const profile = getActiveProfile(aiCfg, options?.profileId);
+export async function queryAI(question, aiCfg) {
+  const profile = getActiveProfile(aiCfg);
   if (!profile || !profile.apiKey) {
     throw new Error('请先在设置中配置 AI API Key');
   }
@@ -263,15 +263,7 @@ async function singleStepVisionCall(profile, cleanBase64List, textPrompt, option
  * 通用 OpenAI 协议 Vision 模型（图像+文本）
  */
 export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}) {
-  const {
-    disableTwoStep = false,
-    twoStepDebug = false,
-    timeout: timeoutMs = 60000,
-    problemType = null,          // ← 新增：后端题型（数字或字符串都行）
-    profileId = null,
-  } = options || {};
-
-  const profile = getActiveProfile(aiCfg, profileId);
+  const profile = getActiveProfile(aiCfg);
   if (!profile || !profile.apiKey) {
     throw new Error('请先在设置中配置 AI API Key');
   }
@@ -287,6 +279,13 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   const visionModel = profile.visionModel || profile.model;
   const textModel = profile.model;
   const hasSeparateTextModel = !!textModel && textModel !== visionModel;
+
+  const {
+    disableTwoStep = false,
+    twoStepDebug = false,
+    timeout: timeoutMs = 60000,
+    problemType = null,          // ← 新增：后端题型（数字或字符串都行）
+  } = options || {};
 
   // -------- 0. 如果只有 VLM（或者显式关闭两步），回退到单步逻辑 --------
   if (!hasSeparateTextModel || disableTwoStep) {
