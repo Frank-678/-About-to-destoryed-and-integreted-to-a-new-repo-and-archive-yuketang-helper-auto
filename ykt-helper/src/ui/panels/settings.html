@@ -114,6 +114,31 @@
             <span class="checkmark"></span>
             启用自动作答
           </label>
+          <small>题目首次出现时按延迟设置自动分析并提交。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-auto-recover-unanswered">
+            <span class="checkmark"></span>
+            刷新后恢复已排队/被中断的 AI 作答
+          </label>
+          <small>只恢复刷新前已经记录为“待作答”或“作答中”的题目；不会默认扫描历史课件。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-auto-recover-expired">
+            <span class="checkmark"></span>
+            刷新后自动强制补交已过期题目
+          </label>
+          <small>需要同时开启上项；已过截止时间时会调用补交接口，风险较高，默认关闭。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-auto-scan-unanswered">
+            <span class="checkmark"></span>
+            自动扫描当前课程中未作答题目
+          </label>
+          <small>仅当前课程已缓存题目；会主动让 AI 尝试未作答题，可能包含旧题，默认关闭。</small>
         </div>
         <div class="setting-item">
           <label class="checkbox-label">
@@ -160,6 +185,22 @@
             新题 / 答题开始
           </label>
           <small>老师开启一道可作答习题时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-danmu-round-start" />
+            <span class="checkmark"></span>
+            新一轮弹幕开始
+          </label>
+          <small>与上一条弹幕间隔达到 60 秒后，收到新一轮第一条弹幕时提醒。</small>
+        </div>
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="ykt-input-notify-danmu-follow-trigger" />
+            <span class="checkmark"></span>
+            7 条弹幕达到跟发条件
+          </label>
+          <small>连续 7 条弹幕在 30 秒内达到条件时提醒；出现次数最多的文本胜出，并列时取最新一条。</small>
         </div>
         <div class="setting-item">
           <label class="checkbox-label">
@@ -285,7 +326,7 @@
             <span class="checkmark"></span>
             重复弹幕自动跟发
           </label>
-          <small>开启后，当前班级最近 7 条弹幕中同一文本出现 3 次时自动跟发 1 条；相邻弹幕间隔达到 60 秒视为新一轮，每轮最多跟发 2 条，同一文本每轮只跟发一次。需要课堂弹幕输入框可用。</small>
+          <small>开启后，当前班级连续 7 条弹幕在 30 秒内会自动跟发出现次数最多的文本；并列时跟发最新一条。相邻弹幕间隔达到 60 秒视为新一轮，每轮最多跟发 2 条，同一文本每轮只跟发一次。需要课堂弹幕输入框可用。</small>
         </div>
         <div class="setting-item">
           <label class="checkbox-label">
