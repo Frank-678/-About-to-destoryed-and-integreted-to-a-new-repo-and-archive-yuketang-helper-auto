@@ -39,7 +39,7 @@ test('uses the per-lesson auto-answer policy instead of only the global switch',
 test('a live unlock re-arms a status previously hydrated by timeline replay', () => {
   assert.match(
     actionsSource,
-    /if \(isLiveUnlock && autoAnswerEnabled\)[\s\S]*?status\.autoAnswerQueued\s*=\s*true/
+    /if \(isLiveUnlock && autoAnswerEnabled && !status\.done\)[\s\S]*?status\.autoAnswerQueued\s*=\s*true/
   );
 });
 
