@@ -20,31 +20,8 @@ jobs:
           ref: fix/stability-auto-answer-20260916
           fetch-depth: 0
 
-      - name: Apply scoped fixes from V2 patch source
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import textwrap
-
-          workflow = Path('.github/workflows/apply-stability-fixes-v2.yml').read_text(encoding='utf-8')
-          start = workflow.index("          from pathlib import Path\n")
-          end = workflow.index("          PY\n", start)
-          script = textwrap.dedent(workflow[start:end])
-
-          # V2 failed safely because this one source block used two excess
-          # indentation levels in its expected/replacement string literals.
-          fixes = {
-              '                        repo.markLessonAutoJoined(lessonId, true);': '            repo.markLessonAutoJoined(lessonId, true);',
-              '                        if (ui.config.autoAnswerOnAutoJoin) {': '            if (ui.config.autoAnswerOnAutoJoin) {',
-              '                          repo.forceAutoAnswerLessons.add(lessonId);': '              repo.forceAutoAnswerLessons.add(lessonId);',
-              '                        }': '            }',
-          }
-          for old, new in fixes.items():
-              script = script.replace(old, new)
-
-          exec(compile(script, 'apply-stability-fixes-v2.py', 'exec'))
-          PY
+      - name: Apply deterministic source fixes
+        run: python3 .github/scripts/apply-stability-fixes.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -65,12 +42,29 @@ jobs:
         working-directory: ykt-helper
         run: npm run build
 
+      - name: Prepare installable field-test userscript
+        shell: bash
+        run: |
+          cp ykt-helper/dist/ykt-helper-1216.user.js release/ykt-helper-1216-stability-test.user.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('release/ykt-helper-1216-stability-test.user.js')
+          text = p.read_text(encoding='utf-8')
+          old = '// @version      1.21.6'
+          new = '// @version      1.21.6.1'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one version header, found {text.count(old)}')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          grep -q 'autoAnswerEnabled && status.autoAnswerQueued' release/ykt-helper-1216-stability-test.user.js
+          grep -q "verificationState = 'correction-failed'" release/ykt-helper-1216-stability-test.user.js
+
       - name: Commit only verified fixes
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ykt-helper/src ykt-helper/test
+          git add ykt-helper/src release/ykt-helper-1216-stability-test.user.js
           git diff --cached --check
           git diff --cached --stat
           git commit -m "fix: restore reliable auto-answer scheduling"
