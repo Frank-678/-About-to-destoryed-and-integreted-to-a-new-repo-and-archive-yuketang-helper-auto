@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（JS版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.21.6.1
+// @version      1.21.6.2
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -6047,6 +6047,63 @@
    */  function isLiveProblemSource(source) {
     return source !== "timeline";
   }
+  function firstScalar(...values) {
+    return values.find(value => value !== void 0 && value !== null && typeof value !== "object" && String(value).trim() !== "");
+  }
+  function getTimelineProblemKey(piece) {
+    if (!piece || piece.type !== "problem") return null;
+    const problemId = firstScalar(piece.prob, piece.problemId, piece.problemid, piece.problem?.problemId, piece.problem?.id, piece.id);
+    if (problemId !== void 0) return `problem:${String(problemId)}`;
+    const presentationId = firstScalar(piece.pres, piece.presentationId, piece.presentation?.id);
+    const slideId = firstScalar(piece.sid, piece.slideId, piece.slide?.id);
+    const timestamp = firstScalar(piece.dt, piece.timestamp, piece.time);
+    if (presentationId !== void 0 || slideId !== void 0 || timestamp !== void 0) return `fallback:${presentationId ?? ""}:${slideId ?? ""}:${timestamp ?? ""}`;
+    return null;
+  }
+  /**
+   * A fetchtimeline frame is a snapshot/replay, not intrinsically historical or
+   * live.  The first snapshot for each lesson establishes the baseline.  Later
+   * snapshots promote only previously unseen problem entries to `timeline-live`.
+   */  function createTimelineProblemTracker() {
+    const seenByLesson = new Map;
+    return {
+      classify(timeline, {lessonId: lessonId = null} = {}) {
+        const lessonKey = String(lessonId || "__current__");
+        const problems = (Array.isArray(timeline) ? timeline : []).filter(piece => piece?.type === "problem");
+        const entries = problems.map(piece => ({
+          piece: piece,
+          key: getTimelineProblemKey(piece)
+        }));
+        const existing = seenByLesson.get(lessonKey);
+        if (!existing) {
+          const baseline = new Set(entries.map(entry => entry.key).filter(Boolean));
+          seenByLesson.set(lessonKey, baseline);
+          return entries.map(entry => ({
+            ...entry,
+            isNew: false,
+            source: "timeline",
+            phase: "baseline"
+          }));
+        }
+        return entries.map(entry => {
+          const isNew = !!entry.key && !existing.has(entry.key);
+          if (entry.key) existing.add(entry.key);
+          return {
+            ...entry,
+            isNew: isNew,
+            source: isNew ? "timeline-live" : "timeline",
+            phase: isNew ? "live-new" : "known"
+          };
+        });
+      },
+      reset(lessonId = null) {
+        seenByLesson.delete(String(lessonId || "__current__"));
+      },
+      clear() {
+        seenByLesson.clear();
+      }
+    };
+  }
   function nonEmptyString(value) {
     const text = String(value ?? "").trim();
     return text || null;
@@ -6202,6 +6259,7 @@
     isEnabled: (_event, config) => isReminderEnabled("problem-start", config)
   });
   const danmuFollowControllers = new Map;
+  const timelineProblemTracker = createTimelineProblemTracker();
   function createDanmuFollowControllerForLesson(lessonId) {
     return createDanmuFollowController({
       enabled: () => ui.config.autoFollowDanmu === true,
@@ -6621,10 +6679,27 @@
   }
   const actions = {
     onFetchTimeline(timeline, options = {}) {
-      for (const piece of Array.isArray(timeline) ? timeline : []) if (piece?.type === "problem") this.onUnlockProblem(piece, {
-        ...options,
-        source: "timeline"
+      const lessonId = options.lessonId || repo.currentLessonId || null;
+      const entries = timelineProblemTracker.classify(timeline, {
+        lessonId: lessonId
       });
+      const liveNew = entries.filter(entry => entry.isNew);
+      console.log("[雨课堂助手][INFO][Timeline] 题目分类:", {
+        lessonId: lessonId ? String(lessonId) : null,
+        totalProblems: entries.length,
+        liveNew: liveNew.length,
+        phases: entries.map(entry => ({
+          key: entry.key,
+          phase: entry.phase
+        }))
+      });
+      for (const entry of entries) {
+        if (entry.isNew) console.log("[雨课堂助手][INFO][Timeline] 检测到实时新增题目:", entry.key);
+        this.onUnlockProblem(entry.piece, {
+          ...options,
+          source: entry.source
+        });
+      }
     },
     onPresentationLoaded(id, data) {
       repo.setPresentation(id, data);

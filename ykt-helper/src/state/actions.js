@@ -23,6 +23,7 @@ import { buildAnswerSubmitOptions } from './answer-editor.js';
 import { createDanmuFollowController } from '../core/danmu-follow.js';
 import { sendDanmuText } from '../core/danmu-sender.js';
 import { isLiveProblemSource } from '../core/problem-event-source.js';
+import { createTimelineProblemTracker } from '../core/timeline-problem-tracker.js';
 import { syncActiveLessons, getLessonId } from '../core/active-lessons.js';
 import { createNavigationArbiter, pickLatestActiveLesson } from '../core/navigation-arbiter.js';
 
@@ -46,6 +47,7 @@ const problemStartReminder = createEventReminder({
 });
 
 const danmuFollowControllers = new Map();
+const timelineProblemTracker = createTimelineProblemTracker();
 
 function createDanmuFollowControllerForLesson(lessonId) {
   return createDanmuFollowController({
@@ -518,10 +520,21 @@ export function startAutoAnswerLoop() {
 
 export const actions = {
   onFetchTimeline(timeline, options = {}) {
-    for (const piece of Array.isArray(timeline) ? timeline : []) {
-      if (piece?.type === 'problem') {
-        this.onUnlockProblem(piece, { ...options, source: 'timeline' });
+    const lessonId = options.lessonId || repo.currentLessonId || null;
+    const entries = timelineProblemTracker.classify(timeline, { lessonId });
+    const liveNew = entries.filter(entry => entry.isNew);
+    console.log('[雨课堂助手][INFO][Timeline] 题目分类:', {
+      lessonId: lessonId ? String(lessonId) : null,
+      totalProblems: entries.length,
+      liveNew: liveNew.length,
+      phases: entries.map(entry => ({ key: entry.key, phase: entry.phase })),
+    });
+
+    for (const entry of entries) {
+      if (entry.isNew) {
+        console.log('[雨课堂助手][INFO][Timeline] 检测到实时新增题目:', entry.key);
       }
+      this.onUnlockProblem(entry.piece, { ...options, source: entry.source });
     }
   },
 
