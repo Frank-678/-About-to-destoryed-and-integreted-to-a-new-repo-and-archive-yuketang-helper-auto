@@ -65,6 +65,7 @@ jobs:
       - name: Commit only verified source and field-test artifact
         shell: bash
         run: |
+          # The generated bundle preserves a few historical trailing spaces; source files remain strict.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ykt-helper/src release/ykt-helper-1216-stability-test.user.js
