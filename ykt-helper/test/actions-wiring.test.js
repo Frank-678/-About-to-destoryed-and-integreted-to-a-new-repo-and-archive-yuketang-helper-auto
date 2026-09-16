@@ -11,8 +11,13 @@ test('wires the auto-answer runner to the exported AI profile predicate', () => 
   );
 });
 
-test('marks timeline problem entries as historical before unlock handling', () => {
+test('classifies timeline entries before unlock handling instead of treating every timeline problem as historical', () => {
+  assert.match(actionsSource, /createTimelineProblemTracker/);
   assert.match(
+    actionsSource,
+    /onFetchTimeline\(timeline, options = \{\}\)[\s\S]*?timelineProblemTracker\.classify\(timeline, \{ lessonId \}\)[\s\S]*?this\.onUnlockProblem\(entry\.piece, \{ \.\.\.options, source: entry\.source \}\)/
+  );
+  assert.doesNotMatch(
     actionsSource,
     /onFetchTimeline\(timeline, options = \{\}\)[\s\S]*?this\.onUnlockProblem\(piece, \{\s*\.\.\.options, source: ['"]timeline['"] \}\)/
   );
