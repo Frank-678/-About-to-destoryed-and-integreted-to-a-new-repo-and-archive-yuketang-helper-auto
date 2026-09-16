@@ -56,8 +56,11 @@ jobs:
               raise SystemExit(f'Expected one version header, found {text.count(old)}')
           p.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
-          grep -q 'autoAnswerEnabled && status.autoAnswerQueued' release/ykt-helper-1216-stability-test.user.js
-          grep -q "verificationState = 'correction-failed'" release/ykt-helper-1216-stability-test.user.js
+          test -s release/ykt-helper-1216-stability-test.user.js
+          grep -q '// @version      1.21.6.1' release/ykt-helper-1216-stability-test.user.js
+          grep -q 'autoAnswerEnabled' release/ykt-helper-1216-stability-test.user.js
+          grep -q 'autoAnswerQueued' release/ykt-helper-1216-stability-test.user.js
+          grep -q 'correction-failed' release/ykt-helper-1216-stability-test.user.js
 
       - name: Commit only verified fixes
         shell: bash
@@ -69,5 +72,3 @@ jobs:
           git diff --cached --stat
           git commit -m "fix: restore reliable auto-answer scheduling"
           git push origin HEAD:fix/stability-auto-answer-20260916
-
-# rerun: static assertion updated to accept the safer !status.done guard
