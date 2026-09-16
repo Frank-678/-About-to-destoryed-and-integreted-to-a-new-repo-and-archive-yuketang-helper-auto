@@ -1,0 +1,77 @@
+name: Apply Stability Fixes V3
+
+on:
+  push:
+    branches:
+      - fix/stability-auto-answer-20260916
+    paths:
+      - '.github/workflows/apply-stability-fixes-v3.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/stability-auto-answer-20260916
+          fetch-depth: 0
+
+      - name: Apply scoped fixes from V2 patch source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/apply-stability-fixes-v2.yml').read_text(encoding='utf-8')
+          start = workflow.index("          from pathlib import Path\n")
+          end = workflow.index("          PY\n", start)
+          script = textwrap.dedent(workflow[start:end])
+
+          # V2 failed safely because this one source block used two excess
+          # indentation levels in its expected/replacement string literals.
+          fixes = {
+              '                        repo.markLessonAutoJoined(lessonId, true);': '            repo.markLessonAutoJoined(lessonId, true);',
+              '                        if (ui.config.autoAnswerOnAutoJoin) {': '            if (ui.config.autoAnswerOnAutoJoin) {',
+              '                          repo.forceAutoAnswerLessons.add(lessonId);': '              repo.forceAutoAnswerLessons.add(lessonId);',
+              '                        }': '            }',
+          }
+          for old, new in fixes.items():
+              script = script.replace(old, new)
+
+          exec(compile(script, 'apply-stability-fixes-v2.py', 'exec'))
+          PY
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ykt-helper
+        run: npm ci
+
+      - name: Run full regression suite
+        working-directory: ykt-helper
+        run: npm test
+
+      - name: Build userscript
+        working-directory: ykt-helper
+        run: npm run build
+
+      - name: Commit only verified fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ykt-helper/src ykt-helper/test
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m "fix: restore reliable auto-answer scheduling"
+          git push origin HEAD:fix/stability-auto-answer-20260916
