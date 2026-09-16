@@ -28,6 +28,8 @@ import { createNavigationArbiter, pickLatestActiveLesson } from '../core/navigat
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
+let _autoJoinGeneration = 0;
+let _autoJoinTimer = null;
 let _autoOnLessonClickStarted = false;
 let _autoOnLessonClickInProgress = false;
 let _navigationArbiter = null;
@@ -80,6 +82,15 @@ function getDanmuFollowController(lessonId) {
 function currentPageLessonId() {
   const match = String(window.location.pathname || '').match(/\/lesson\/fullscreen\/v3\/([^/]+)/);
   return match ? match[1] : null;
+}
+
+function shouldAutoAnswerForLesson(lessonId) {
+  if (ui?.config?.autoAnswer === true) return true;
+  const key = String(lessonId || '').trim();
+  if (!key) return false;
+  if (repo?.autoJoinedLessons?.has(key) && ui?.config?.autoAnswerOnAutoJoin === true) return true;
+  if (repo?.forceAutoAnswerLessons?.has(key)) return true;
+  return false;
 }
 
 const AUTO_ANSWER_EVENT_META = {
@@ -348,6 +359,8 @@ function restorePendingProblemStatuses() {
 if (typeof window !== 'undefined') {
   window.addEventListener('ykt:auto-answer-config-changed', () => {
     restorePendingProblemStatuses();
+    if (ui.config.autoJoinEnabled) actions.maybeStartAutoJoin();
+    else actions.stopAutoJoinLoop();
   });
 }
 
@@ -555,9 +568,12 @@ export const actions = {
     const recoveryStore = getProblemRecoveryStore(lessonId || repo.currentLessonId);
     const recovered = recoveryStore?.get(pid);
     const previous = getProblemStatus(pid);
+    const autoAnswerEnabled = shouldAutoAnswerForLesson(
+      lessonId || previous?.lessonId || recovered?.lessonId || problem?.lessonId || repo.currentLessonId
+    );
     const isFirstUnlock = !previous && !recovered;
     const status = previous || (recovered ? statusFromRecoveryRecord(recovered) : createStatusForProblem(problem, {
-      autoAnswerQueued: isLiveUnlock && !!ui.config.autoAnswer,
+      autoAnswerQueued: isLiveUnlock && autoAnswerEnabled,
     }));
 
     status.presentationId = payload.pres ?? status.presentationId;
@@ -570,8 +586,11 @@ export const actions = {
     status.phase = statusPhase(status);
     status.autoAnswerTime = status.autoAnswerTime ?? null;
     status.autoAnswerQueued = isFirstUnlock
-      ? isLiveUnlock && !!ui.config.autoAnswer
+      ? isLiveUnlock && autoAnswerEnabled
       : status.autoAnswerQueued !== false;
+    if (isLiveUnlock && autoAnswerEnabled && !status.done) {
+      status.autoAnswerQueued = true;
+    }
     // 刷新恢复的过期任务可能已经排队等待 /retry；重复解锁事件不能清掉这个标记。
     status.recoveryForceRetry = status.recoveryForceRetry === true;
     const expired = Number.isFinite(status.endTime) && Date.now() >= status.endTime;
@@ -602,7 +621,7 @@ export const actions = {
       return notified;
     }
 
-    if (ui.config.autoAnswer && status.autoAnswerQueued && !status.answering && status.phase !== 'failed' && status.autoAnswerTime === null) {
+    if (autoAnswerEnabled && status.autoAnswerQueued && !status.answering && status.phase !== 'failed' && status.autoAnswerTime === null) {
       const delay = expired
         ? 0
         : ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
@@ -689,7 +708,7 @@ export const actions = {
         status.phase = 'done';
         status.autoAnswerTime = null;
       }
-      getProblemRecoveryStore()?.remove(problemId);
+      getProblemRecoveryStore(status?.lessonId || repo.currentLessonId)?.remove(problemId);
       ui.updateProblemList();
     }
   },
@@ -819,11 +838,13 @@ export const actions = {
     if (_autoJoinStarted) return;
     _autoJoinStarted = true;
     repo.autoJoinRunning = true;
+    const generation = ++_autoJoinGeneration;
 
     const loop = async () => {
-      if (!repo.autoJoinRunning) return;
+      if (!repo.autoJoinRunning || generation !== _autoJoinGeneration) return;
       try {
         const list = await getOnLesson();
+        if (!repo.autoJoinRunning || generation !== _autoJoinGeneration) return;
         const snapshot = syncActiveLessons([...repo.activeLessons.values()], list);
         repo.activeLessons.clear();
         for (const item of snapshot.active) repo.activeLessons.set(item.lessonId, item);
@@ -847,11 +868,8 @@ export const actions = {
               continue;
             }
             connectOrAttachLessonWS({ lessonId, auth: token });
-            // 标记该课堂为“自动进入”
+            // 标记该课堂为“自动进入”；是否自动答题由统一策略动态读取配置。
             repo.markLessonAutoJoined(lessonId, true);
-            if (ui.config.autoAnswerOnAutoJoin) {
-              repo.forceAutoAnswerLessons.add(lessonId);
-            }
           } catch (e) {
             console.error('[雨课堂助手][ERR][AutoJoin] 进入课堂失败:', lessonId, e);
           }
@@ -859,18 +877,31 @@ export const actions = {
       } catch (e) {
           console.error('[雨课堂助手][ERR][AutoJoin] 拉取正在上课失败:', e);
       } finally {
-        setTimeout(loop, 5000);
+        if (repo.autoJoinRunning && generation === _autoJoinGeneration) {
+          _autoJoinTimer = setTimeout(loop, 5000);
+        }
       }
     };
-    loop();
+    void loop();
   },
 
   stopAutoJoinLoop() {
     repo.autoJoinRunning = false;
+    _autoJoinStarted = false;
+    _autoJoinGeneration += 1;
+    if (_autoJoinTimer !== null) {
+      clearTimeout(_autoJoinTimer);
+      _autoJoinTimer = null;
+    }
     _navigationArbiter?.cancel();
     if (_autoJumpRetryTimer !== null) {
       clearTimeout(_autoJumpRetryTimer);
       _autoJumpRetryTimer = null;
+    }
+    for (const lessonId of [...repo.autoJoinedLessons]) {
+      const socket = repo.lessonSockets.get(String(lessonId));
+      try { socket?.close?.(); } catch {}
+      repo.markLessonDisconnected(lessonId, 'auto-join-stopped');
     }
   },
 

@@ -105,11 +105,9 @@ export function createAutoAnswerRunner({
         endTime: status.endTime,
         forceRetry: shouldRetry,
         lessonId,
+        autoGate: false,
+        waitMs: 0,
       };
-      if (force) {
-        submitOptions.autoGate = false;
-        submitOptions.waitMs = 0;
-      }
 
       let submission = await submitAnswer(problem, parsed, submitOptions);
       let finalAnswer = parsed;
@@ -130,9 +128,15 @@ export function createAutoAnswerRunner({
           });
           verificationState = verification?.state || 'unavailable';
           if (verificationState === 'corrected' && verification?.answer !== undefined) {
-            submission = await submitAnswer(problem, verification.answer, submitOptions);
-            finalAnswer = verification.answer;
-            finalAIContent = verification.aiAnswer ?? aiContent;
+            try {
+              const correctedSubmission = await submitAnswer(problem, verification.answer, submitOptions);
+              submission = correctedSubmission;
+              finalAnswer = verification.answer;
+              finalAIContent = verification.aiAnswer ?? aiContent;
+            } catch (error) {
+              verificationState = 'correction-failed';
+              console.warn('[雨课堂助手][WARN][AutoAnswer] 验证模型给出修正，但修正提交失败，保留首次成功提交:', error);
+            }
           } else if (verification?.aiAnswer !== undefined) {
             finalAIContent = verification.aiAnswer;
           }
