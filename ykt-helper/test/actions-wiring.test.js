@@ -53,7 +53,7 @@ test('configuration changes start or stop auto-join immediately', () => {
 test('stopping auto-join makes it restartable and closes managed classroom sockets', () => {
   assert.match(
     actionsSource,
-    /stopAutoJoinLoop\(\)[\s\S]*?_autoJoinStarted\s*=\s*false/[\s\S]*?repo\.autoJoinedLessons/[\s\S]*?markLessonDisconnected/
+    /stopAutoJoinLoop\(\)[\s\S]*?_autoJoinStarted\s*=\s*false[\s\S]*?repo\.autoJoinedLessons[\s\S]*?markLessonDisconnected/
   );
 });
 
