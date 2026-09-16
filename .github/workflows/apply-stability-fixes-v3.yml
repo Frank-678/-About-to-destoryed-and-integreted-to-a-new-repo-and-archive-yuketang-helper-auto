@@ -69,3 +69,5 @@ jobs:
           git diff --cached --stat
           git commit -m "fix: restore reliable auto-answer scheduling"
           git push origin HEAD:fix/stability-auto-answer-20260916
+
+# rerun: static assertion updated to accept the safer !status.done guard
