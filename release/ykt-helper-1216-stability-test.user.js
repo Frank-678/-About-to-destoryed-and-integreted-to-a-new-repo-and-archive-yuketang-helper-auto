@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（JS版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.21.6.2
+// @version      1.21.6.3
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -5478,6 +5478,14 @@
       notify?.("auto-answer-started", problem, source === "manual" ? "手动强制 AI 作答已开始。" : void 0, {
         source: source
       });
+      console.log("[雨课堂助手][INFO][AutoAnswer] 开始作答", {
+        problemId: problem?.problemId,
+        source: source,
+        lessonId: lessonId,
+        force: force,
+        forceRetry: forceRetry
+      });
+      toast?.(source === "manual" ? "手动 AI 作答开始" : "自动作答开始", 1500);
       let aiContent = "";
       try {
         let parsed;
@@ -5490,7 +5498,13 @@
         }) || null;
         let image = null;
         let prompt = "";
-        if (!hasActiveProfile(aiConfig, answerProfile)) parsed = makeDefaultAnswer(problem); else {
+        const activeAIProfile = hasActiveProfile(aiConfig, answerProfile);
+        console.log("[雨课堂助手][INFO][AutoAnswer] 作答模式", {
+          problemId: problem?.problemId,
+          mode: activeAIProfile ? "ai" : "default-fallback",
+          profileId: answerProfile?.id || null
+        });
+        if (!activeAIProfile) parsed = makeDefaultAnswer(problem); else {
           try {
             image = await captureSlideImage(status.slideId);
           } catch (error) {
@@ -5516,6 +5530,10 @@
           waitMs: 0
         };
         let submission = await submitAnswer(problem, parsed, submitOptions);
+        console.log("[雨课堂助手][INFO][AutoAnswer] 首次提交成功", {
+          problemId: problem?.problemId,
+          route: submission?.route || null
+        });
         let finalAnswer = parsed;
         let finalAIContent = aiContent;
         let verificationState = "disabled";
@@ -5572,6 +5590,11 @@
         status.attempts = Math.max(0, Number(status.attempts) || 0) + 1;
         status.lastError = errorMessage(error);
         emitStatus(status, onStatusChange, problem);
+        console.error("[雨课堂助手][ERR][AutoAnswer] 作答失败", {
+          problemId: problem?.problemId,
+          source: source,
+          error: status.lastError
+        });
         notify?.("auto-answer-failed", problem, `AI 作答失败：${status.lastError}`, {
           source: source
         });
@@ -6260,6 +6283,8 @@
   });
   const danmuFollowControllers = new Map;
   const timelineProblemTracker = createTimelineProblemTracker();
+  const LIVE_UNLOCK_RETRY_DELAY_MS = 250;
+  const LIVE_UNLOCK_RETRY_LIMIT = 40;
   function createDanmuFollowControllerForLesson(lessonId) {
     return createDanmuFollowController({
       enabled: () => ui.config.autoFollowDanmu === true,
@@ -6714,7 +6739,7 @@
       restorePendingProblemStatuses();
       ui.updatePresentationList();
     },
-    onUnlockProblem(data, {notificationOnly: notificationOnly = false, source: source = "live", lessonId: lessonId = null} = {}) {
+    onUnlockProblem(data, {notificationOnly: notificationOnly = false, source: source = "live", lessonId: lessonId = null, liveRetryCount: liveRetryCount = 0} = {}) {
       const isLiveUnlock = isLiveProblemSource(source);
       const payload = data && typeof data === "object" ? data : {};
       const problemId = firstValue(payload.prob, payload.problemId, payload.problemid, payload.problem?.problemId, payload.problem?.id, payload.id);
@@ -6722,9 +6747,33 @@
       const problem = getProblemById(problemId);
       const slide = repo.slides.get(slideId) || repo.slides.get(String(slideId));
       if (!problem || !slide) {
-        if (notificationOnly && isLiveUnlock) return notifyProblemStart(payload, problem, slide, lessonId);
-        console.log("[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在");
-        return false;
+        const notified = isLiveUnlock ? notifyProblemStart(payload, problem, slide, lessonId) : false;
+        if (isLiveUnlock && !notificationOnly && liveRetryCount < LIVE_UNLOCK_RETRY_LIMIT) {
+          if (liveRetryCount === 0) console.warn("[雨课堂助手][WARN][onUnlockProblem] 实时新题已到达，但题目/幻灯片数据尚未加载；开始短暂重试", {
+            problemId: problemId,
+            slideId: slideId,
+            lessonId: lessonId
+          });
+          setTimeout(() => {
+            actions.onUnlockProblem(payload, {
+              notificationOnly: false,
+              source: source,
+              lessonId: lessonId,
+              liveRetryCount: liveRetryCount + 1
+            });
+          }, LIVE_UNLOCK_RETRY_DELAY_MS);
+          return notified;
+        }
+        if (isLiveUnlock && !notificationOnly) {
+          console.error("[雨课堂助手][ERR][onUnlockProblem] 实时新题数据重试后仍未加载，自动作答未启动", {
+            problemId: problemId,
+            slideId: slideId,
+            lessonId: lessonId,
+            liveRetryCount: liveRetryCount
+          });
+          ui.toast("自动作答未启动：实时新题数据 10 秒内仍未加载", 5e3);
+        } else console.log("[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在");
+        return notified;
       }
       console.log(`[雨课堂助手][DBG][onUnlockProblem] ${isLiveUnlock ? "题目解锁" : "历史时间线题目状态恢复"}`);
       console.log("[雨课堂助手][DBG][onUnlockProblem] 题目ID:", problemId);
@@ -6821,10 +6870,17 @@
       };
       const lessonId = messageLessonId || pageLessonId || repo.currentLessonId || "__current__";
       const result = await getDanmuFollowController(lessonId).handle(data, options);
-      if (result.triggered) if (result.sendResult?.sent) console.log("[雨课堂助手][INFO][DanmuFollow] 已自动跟发:", result.text, {
-        count: result.count,
-        sentCount: result.sentCount
-      }); else console.warn("[雨课堂助手][WARN][DanmuFollow] 达到跟发条件，但发送失败:", result.text, result.sendResult);
+      if (result.triggered) if (result.sendResult?.sent) {
+        console.log("[雨课堂助手][INFO][DanmuFollow] 已自动跟发:", result.text, {
+          count: result.count,
+          sentCount: result.sentCount
+        });
+        ui.toast(`弹幕已自动跟发：${result.text}`, 2500);
+      } else {
+        const failureReason = result.sendResult?.reason || "unknown";
+        console.warn("[雨课堂助手][WARN][DanmuFollow] 达到跟发条件，但发送失败:", result.text, result.sendResult);
+        ui.toast(`弹幕自动跟发失败（${failureReason}）`, 4e3);
+      }
       return result;
     },
     onLessonFinished({lessonId: lessonId = null} = {}) {

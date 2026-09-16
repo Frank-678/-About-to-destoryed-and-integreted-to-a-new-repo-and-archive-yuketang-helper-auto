@@ -64,6 +64,14 @@ export function createAutoAnswerRunner({
     status.lastError = '';
     emitStatus(status, onStatusChange, problem);
     notify?.('auto-answer-started', problem, source === 'manual' ? '手动强制 AI 作答已开始。' : undefined, { source });
+    console.log('[雨课堂助手][INFO][AutoAnswer] 开始作答', {
+      problemId: problem?.problemId,
+      source,
+      lessonId,
+      force,
+      forceRetry,
+    });
+    toast?.(source === 'manual' ? '手动 AI 作答开始' : '自动作答开始', 1500);
 
     let aiContent = '';
     try {
@@ -77,7 +85,13 @@ export function createAutoAnswerRunner({
       }) || null;
       let image = null;
       let prompt = '';
-      if (!hasActiveProfile(aiConfig, answerProfile)) {
+      const activeAIProfile = hasActiveProfile(aiConfig, answerProfile);
+      console.log('[雨课堂助手][INFO][AutoAnswer] 作答模式', {
+        problemId: problem?.problemId,
+        mode: activeAIProfile ? 'ai' : 'default-fallback',
+        profileId: answerProfile?.id || null,
+      });
+      if (!activeAIProfile) {
         parsed = makeDefaultAnswer(problem);
       } else {
         try {
@@ -110,6 +124,10 @@ export function createAutoAnswerRunner({
       };
 
       let submission = await submitAnswer(problem, parsed, submitOptions);
+      console.log('[雨课堂助手][INFO][AutoAnswer] 首次提交成功', {
+        problemId: problem?.problemId,
+        route: submission?.route || null,
+      });
       let finalAnswer = parsed;
       let finalAIContent = aiContent;
       let verificationState = 'disabled';
@@ -172,6 +190,11 @@ export function createAutoAnswerRunner({
       status.attempts = Math.max(0, Number(status.attempts) || 0) + 1;
       status.lastError = errorMessage(error);
       emitStatus(status, onStatusChange, problem);
+      console.error('[雨课堂助手][ERR][AutoAnswer] 作答失败', {
+        problemId: problem?.problemId,
+        source,
+        error: status.lastError,
+      });
       notify?.('auto-answer-failed', problem, `AI 作答失败：${status.lastError}`, { source });
       toast?.(`AI 作答失败：${status.lastError}`, 4000);
       return { ok: false, reason: 'error', error };

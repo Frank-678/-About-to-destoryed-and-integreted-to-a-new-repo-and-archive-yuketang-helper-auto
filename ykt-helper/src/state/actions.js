@@ -48,6 +48,8 @@ const problemStartReminder = createEventReminder({
 
 const danmuFollowControllers = new Map();
 const timelineProblemTracker = createTimelineProblemTracker();
+const LIVE_UNLOCK_RETRY_DELAY_MS = 250;
+const LIVE_UNLOCK_RETRY_LIMIT = 40;
 
 function createDanmuFollowControllerForLesson(lessonId) {
   return createDanmuFollowController({
@@ -552,7 +554,7 @@ export const actions = {
     ui.updatePresentationList();
   },
 
-  onUnlockProblem(data, { notificationOnly = false, source = 'live', lessonId = null } = {}) {
+  onUnlockProblem(data, { notificationOnly = false, source = 'live', lessonId = null, liveRetryCount = 0 } = {}) {
     const isLiveUnlock = isLiveProblemSource(source);
     const payload = data && typeof data === 'object' ? data : {};
     const problemId = firstValue(
@@ -567,9 +569,37 @@ export const actions = {
     const problem = getProblemById(problemId);
     const slide = repo.slides.get(slideId) || repo.slides.get(String(slideId));
     if (!problem || !slide) {
-      if (notificationOnly && isLiveUnlock) return notifyProblemStart(payload, problem, slide, lessonId);
-      console.log('[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在');
-      return false;
+      const notified = isLiveUnlock ? notifyProblemStart(payload, problem, slide, lessonId) : false;
+      if (isLiveUnlock && !notificationOnly && liveRetryCount < LIVE_UNLOCK_RETRY_LIMIT) {
+        if (liveRetryCount === 0) {
+          console.warn('[雨课堂助手][WARN][onUnlockProblem] 实时新题已到达，但题目/幻灯片数据尚未加载；开始短暂重试', {
+            problemId,
+            slideId,
+            lessonId,
+          });
+        }
+        setTimeout(() => {
+          actions.onUnlockProblem(payload, {
+            notificationOnly: false,
+            source,
+            lessonId,
+            liveRetryCount: liveRetryCount + 1,
+          });
+        }, LIVE_UNLOCK_RETRY_DELAY_MS);
+        return notified;
+      }
+      if (isLiveUnlock && !notificationOnly) {
+        console.error('[雨课堂助手][ERR][onUnlockProblem] 实时新题数据重试后仍未加载，自动作答未启动', {
+          problemId,
+          slideId,
+          lessonId,
+          liveRetryCount,
+        });
+        ui.toast('自动作答未启动：实时新题数据 10 秒内仍未加载', 5000);
+      } else {
+        console.log('[雨课堂助手][ERR][onUnlockProblem] 题目或幻灯片不存在');
+      }
+      return notified;
     }
 
     console.log(`[雨课堂助手][DBG][onUnlockProblem] ${isLiveUnlock ? '题目解锁' : '历史时间线题目状态恢复'}`);
@@ -689,8 +719,11 @@ export const actions = {
           count: result.count,
           sentCount: result.sentCount,
         });
+        ui.toast(`弹幕已自动跟发：${result.text}`, 2500);
       } else {
+        const failureReason = result.sendResult?.reason || 'unknown';
         console.warn('[雨课堂助手][WARN][DanmuFollow] 达到跟发条件，但发送失败:', result.text, result.sendResult);
+        ui.toast(`弹幕自动跟发失败（${failureReason}）`, 4000);
       }
     }
     return result;
