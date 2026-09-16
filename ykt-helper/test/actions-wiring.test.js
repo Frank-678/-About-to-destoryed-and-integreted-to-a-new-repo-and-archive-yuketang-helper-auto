@@ -26,3 +26,19 @@ test('keeps historical problem entries out of reminder and auto-answer paths', (
     /if \(!isLiveUnlock\)[\s\S]*?return false;/
   );
 });
+
+test('uses the per-lesson auto-answer policy instead of only the global switch', () => {
+  assert.match(actionsSource, /shouldAutoAnswerForLesson/);
+  assert.match(actionsSource, /const autoAnswerEnabled\s*=\s*shouldAutoAnswerForLesson/);
+  assert.match(
+    actionsSource,
+    /if \(autoAnswerEnabled && status\.autoAnswerQueued/
+  );
+});
+
+test('a live unlock re-arms a status previously hydrated by timeline replay', () => {
+  assert.match(
+    actionsSource,
+    /if \(isLiveUnlock && autoAnswerEnabled\)[\s\S]*?status\.autoAnswerQueued\s*=\s*true/
+  );
+});
