@@ -42,3 +42,28 @@ test('a live unlock re-arms a status previously hydrated by timeline replay', ()
     /if \(isLiveUnlock && autoAnswerEnabled\)[\s\S]*?status\.autoAnswerQueued\s*=\s*true/
   );
 });
+
+test('configuration changes start or stop auto-join immediately', () => {
+  assert.match(
+    actionsSource,
+    /ykt:auto-answer-config-changed[\s\S]*?ui\.config\.autoJoinEnabled[\s\S]*?actions\.maybeStartAutoJoin\(\)[\s\S]*?actions\.stopAutoJoinLoop\(\)/
+  );
+});
+
+test('stopping auto-join makes it restartable and closes managed classroom sockets', () => {
+  assert.match(
+    actionsSource,
+    /stopAutoJoinLoop\(\)[\s\S]*?_autoJoinStarted\s*=\s*false/[\s\S]*?repo\.autoJoinedLessons/[\s\S]*?markLessonDisconnected/
+  );
+});
+
+test('auto-joined lessons do not become permanent force-auto-answer lessons', () => {
+  assert.doesNotMatch(actionsSource, /repo\.forceAutoAnswerLessons\.add\(lessonId\)/);
+});
+
+test('successful background answers clear recovery state from the problem lesson', () => {
+  assert.match(
+    actionsSource,
+    /getProblemRecoveryStore\(status\?\.lessonId \|\| repo\.currentLessonId\)\?\.remove\(problemId\)/
+  );
+});
