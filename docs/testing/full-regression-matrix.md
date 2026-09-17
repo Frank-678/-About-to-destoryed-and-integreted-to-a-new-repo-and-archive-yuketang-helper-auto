@@ -1,5 +1,7 @@
 # 雨课堂助手全量回归测试矩阵
 
+> 产品边界：最终只保留轻量浏览器 JavaScript userscript。Windows/Electron/CLI/桌面网络观察器等桌面软件方向不进入最终产品，也不作为后续发布目标。历史分支中的这类提交只做一次审计：若包含可独立复用的纯 JS 逻辑则单独移植，否则整体舍弃。
+>
 > 目标：版本号和人工印象都不能再作为“功能没坏”的依据。每个用户可见功能必须至少有一条行为测试；关键链路必须从入口覆盖到最终副作用。
 
 ## 测试层级
@@ -182,6 +184,7 @@
 - [ ] 历史 release 文件不可被覆盖。
 - [ ] build bundle 含实时事件、AI、提交、弹幕、刷新关键代码。
 - [ ] 临时 patch workflow 不进入最终 main。
+- [ ] 最终发布树中不存在 `ykt-helper-win`、Electron、Windows installer 或桌面 CLI 依赖。
 
 ## 关键场景链路（必须有 L4）
 
@@ -203,3 +206,4 @@
 - 每种题型至少覆盖 AI 解析 + 提交 payload。
 - 网络失败、超时、重复点击、空数据、跨 lesson、刷新均有负向测试。
 - CI 同时执行 unit/contract/scenario/build，不允许只靠静态正则证明功能可用。
+- 最终产物是一份轻量 userscript；Windows/Electron 桌面程序不进入最终发布。
