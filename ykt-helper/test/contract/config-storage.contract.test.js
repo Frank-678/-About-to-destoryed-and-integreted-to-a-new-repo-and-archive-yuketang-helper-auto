@@ -12,6 +12,28 @@ function withStorage(entries, fn) {
   }
 }
 
+function clone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function createPrivateStore(entries = {}) {
+  const values = new Map(Object.entries(entries).map(([key, value]) => [key, clone(value)]));
+  return {
+    available: () => true,
+    get(key, dv = null) {
+      return values.has(key) ? clone(values.get(key)) : dv;
+    },
+    set(key, value) {
+      values.set(key, clone(value));
+      return true;
+    },
+    remove(key) {
+      values.delete(key);
+      return true;
+    },
+  };
+}
+
 const prefix = 'ykt-helper:';
 
 test('legacy top-level profile is available under ai immediately after storage read', () => withStorage({
@@ -77,4 +99,84 @@ test('non-config storage keys keep ordinary StorageManager semantics', () => wit
   const storage = new StorageManager(prefix);
   assert.deepEqual(storage.get('other'), { x: 1 });
   assert.equal(storage.get('missing', 42), 42);
+}));
+
+test('saving config stores AI secrets privately and keeps localStorage sanitized', () => withStorage({}, () => {
+  const privateStore = createPrivateStore();
+  const storage = new StorageManager(prefix, { privateStore });
+  storage.set('config', {
+    autoAnswer: true,
+    ai: {
+      activeProfileId: 'p1',
+      kimiApiKey: 'legacy-secret',
+      apiKey: 'legacy-api-secret',
+      ocrApiKey: 'ocr-secret',
+      translateApiKey: 'translate-secret',
+      profiles: [
+        { id: 'p1', name: 'Primary', baseUrl: 'https://example.test', apiKey: 'profile-secret', model: 'm' },
+      ],
+    },
+    profiles: [
+      { id: 'p1', name: 'Primary', baseUrl: 'https://example.test', apiKey: 'profile-secret', model: 'm' },
+    ],
+  });
+
+  const persistedText = globalThis.localStorage.getItem(`${prefix}config`);
+  assert.ok(persistedText);
+  for (const secret of ['legacy-secret', 'legacy-api-secret', 'ocr-secret', 'translate-secret', 'profile-secret']) {
+    assert.equal(persistedText.includes(secret), false, `localStorage leaked ${secret}`);
+  }
+
+  const reloaded = new StorageManager(prefix, { privateStore }).get('config', {});
+  assert.equal(reloaded.ai.profiles[0].apiKey, 'profile-secret');
+  assert.equal(reloaded.ai.ocrApiKey, 'ocr-secret');
+  assert.equal(reloaded.ai.translateApiKey, 'translate-secret');
+}));
+
+test('legacy localStorage secrets migrate to private storage before local copies are scrubbed', () => withStorage({
+  [`${prefix}config`]: JSON.stringify({
+    ai: {
+      activeProfileId: 'p1',
+      kimiApiKey: 'legacy-in-config',
+      ocrApiKey: 'legacy-ocr',
+      translateApiKey: 'legacy-translate',
+      profiles: [{ id: 'p1', apiKey: 'legacy-profile', model: 'm' }],
+    },
+  }),
+  [`${prefix}kimiApiKey`]: JSON.stringify('legacy-separate'),
+}, () => {
+  const privateStore = createPrivateStore();
+  const firstRead = new StorageManager(prefix, { privateStore }).get('config', {});
+  assert.equal(firstRead.ai.profiles[0].apiKey, 'legacy-profile');
+  assert.equal(firstRead.ai.ocrApiKey, 'legacy-ocr');
+  assert.equal(firstRead.ai.translateApiKey, 'legacy-translate');
+
+  const persistedText = globalThis.localStorage.getItem(`${prefix}config`);
+  for (const secret of ['legacy-in-config', 'legacy-ocr', 'legacy-translate', 'legacy-profile']) {
+    assert.equal(persistedText.includes(secret), false, `migration left ${secret} in config localStorage`);
+  }
+  assert.equal(globalThis.localStorage.getItem(`${prefix}kimiApiKey`), null);
+
+  const secondRead = new StorageManager(prefix, { privateStore }).get('config', {});
+  assert.equal(secondRead.ai.profiles[0].apiKey, 'legacy-profile');
+  assert.equal(secondRead.ai.ocrApiKey, 'legacy-ocr');
+  assert.equal(secondRead.ai.translateApiKey, 'legacy-translate');
+}));
+
+test('failed private migration never deletes the only local copy of a legacy secret', () => withStorage({
+  [`${prefix}config`]: JSON.stringify({
+    ai: { profiles: [{ id: 'p1', apiKey: 'must-survive' }], activeProfileId: 'p1' },
+  }),
+  [`${prefix}kimiApiKey`]: JSON.stringify('must-also-survive'),
+}, () => {
+  const privateStore = {
+    available: () => true,
+    get: (_key, dv = null) => dv,
+    set: () => { throw new Error('private store unavailable'); },
+    remove: () => true,
+  };
+  const cfg = new StorageManager(prefix, { privateStore }).get('config', {});
+  assert.equal(cfg.ai.profiles[0].apiKey, 'must-survive');
+  assert.match(globalThis.localStorage.getItem(`${prefix}config`), /must-survive/);
+  assert.match(globalThis.localStorage.getItem(`${prefix}kimiApiKey`), /must-also-survive/);
 }));
