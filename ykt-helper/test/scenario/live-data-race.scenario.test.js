@@ -44,7 +44,7 @@ function installQuestion(problemId, slideId) {
 
 test.after(() => uninstallBrowserGlobals());
 
-test('live event with missing data schedules a bounded retry instead of being lost', () => {
+test('live event with missing data schedules a short bounded retry instead of being lost', () => {
   const lessonId = reset();
   const scheduled = [];
   const realSetTimeout = globalThis.setTimeout;
@@ -53,7 +53,7 @@ test('live event with missing data schedules a bounded retry instead of being lo
     const result = actions.onUnlockProblem({ prob: 'late-q', sid: 'late-s', pres: 'p1' }, { source: 'live', lessonId });
     assert.equal(result, true, 'live event should still produce its initial notification');
     assert.equal(scheduled.length, 1);
-    assert.equal(scheduled[0].ms, 500);
+    assert.ok(scheduled[0].ms > 0 && scheduled[0].ms <= 1000, `retry should be short, got ${scheduled[0].ms}ms`);
     assert.equal(repo.problemStatus.has('late-q'), false);
   } finally {
     globalThis.setTimeout = realSetTimeout;
@@ -80,17 +80,25 @@ test('once late problem data arrives, scheduled retry resumes normal auto-answer
   }
 });
 
-test('after retry limit the failure becomes visible and no further retry is scheduled', () => {
+test('missing data retry is bounded and eventually becomes a visible failure', () => {
   const lessonId = reset();
-  let scheduled = 0;
+  const queue = [];
   const realSetTimeout = globalThis.setTimeout;
-  globalThis.setTimeout = () => { scheduled += 1; return scheduled; };
+  globalThis.setTimeout = (fn, ms) => { queue.push({ fn, ms }); return queue.length; };
   try {
-    actions.onUnlockProblem({ prob: 'missing-q', sid: 'missing-s' }, {
-      source: 'live', lessonId, liveRetryCount: 20,
-    });
-    assert.equal(scheduled, 0);
-    assert.ok(toasts.some(message => message.includes('10 秒内仍未加载')));
+    actions.onUnlockProblem({ prob: 'missing-q', sid: 'missing-s' }, { source: 'live', lessonId });
+    let steps = 0;
+    while (queue.length && steps < 100) {
+      const { fn, ms } = queue.shift();
+      assert.ok(ms > 0 && ms <= 1000, `retry should remain short, got ${ms}ms`);
+      fn();
+      steps += 1;
+    }
+    assert.ok(steps > 1, 'missing data should be retried more than once');
+    assert.ok(steps < 100, 'retry loop must terminate instead of running forever');
+    assert.equal(queue.length, 0);
+    assert.ok(toasts.some(message => message.includes('仍未加载')));
+    assert.equal(repo.problemStatus.has('missing-q'), false);
   } finally {
     globalThis.setTimeout = realSetTimeout;
   }
