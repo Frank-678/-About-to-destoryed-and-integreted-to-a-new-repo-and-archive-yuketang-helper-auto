@@ -125,6 +125,7 @@ jobs:
             s += """
 
           test('empty result containers do not suppress AI execution', async () => {
+            const { createAutoAnswerRunner } = await loadRunner();
             for (const result of [[], {}]) {
               let submitted = 0;
               const runner = createAutoAnswerRunner({
@@ -141,6 +142,7 @@ jobs:
           });
 
           test('manual force with allowResubmit bypasses done status and existing result', async () => {
+            const { createAutoAnswerRunner } = await loadRunner();
             let submitted = 0;
             const runner = createAutoAnswerRunner({
               hasActiveProfile: () => false,
