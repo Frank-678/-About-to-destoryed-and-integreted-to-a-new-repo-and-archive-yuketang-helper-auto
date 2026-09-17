@@ -133,8 +133,8 @@ old = "import { actions } from '../state/actions.js';\n"
 new = "import { runtimeActionRef } from '../core/runtime-dispatch.js';\n"
 require_once(text, old, 'ws actions import')
 expected_ws_calls = text.count('actions.')
-if expected_ws_calls != 5:
-    raise SystemExit(f'ws actions calls: expected 5, got {expected_ws_calls}')
+if expected_ws_calls != 6:
+    raise SystemExit(f'ws actions calls: expected 6, got {expected_ws_calls}')
 text = text.replace('actions.', 'runtimeActionRef.current?.')
 ws.write_text(text, encoding='utf-8')
 
