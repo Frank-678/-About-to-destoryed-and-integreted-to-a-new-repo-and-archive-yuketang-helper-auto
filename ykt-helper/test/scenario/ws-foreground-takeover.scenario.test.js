@@ -90,6 +90,24 @@ test('foreground native socket takes ownership without later managed-close delet
   assert.equal(repo.lessonSockets.get('lesson-owner'), native);
 });
 
+test('AutoJoin stop is defensive against a stale autoJoined marker on a native owner', () => {
+  resetLessonState();
+  const native = new NativeWebSocket('wss://www.yuketang.cn/wsapp/');
+  native.__yktLessonId = 'lesson-stale-marker';
+  // Deliberately simulate stale persisted/runtime bookkeeping from an older path.
+  repo.markLessonConnected('lesson-stale-marker', native, 'native-token');
+  repo.markLessonAutoJoined('lesson-stale-marker', true);
+
+  actions.stopAutoJoinLoop();
+
+  assert.equal(native.closeCalls, 0,
+    'stopAutoJoinLoop must only close sockets explicitly owned by AutoJoin');
+  assert.equal(repo.lessonSockets.get('lesson-stale-marker'), native);
+  assert.equal(repo.listeningLessons.has('lesson-stale-marker'), true);
+  assert.equal(repo.autoJoinedLessons.has('lesson-stale-marker'), false,
+    'stale AutoJoin identity should still be cleared');
+});
+
 test.after(() => {
   actions.stopAutoJoinLoop();
   if (previousWebSocket === undefined) delete globalThis.WebSocket;
