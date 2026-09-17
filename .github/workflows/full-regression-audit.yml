@@ -1,0 +1,92 @@
+name: Full Regression Audit
+
+on:
+  push:
+    branches:
+      - audit/full-regression-20260917
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  legacy:
+    name: Legacy regression
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - run: npm ci
+      - run: npm run test:legacy
+
+  unit:
+    name: Unit matrices
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - run: npm ci
+      - run: npm run test:unit
+
+  contract:
+    name: Browser and network contracts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - run: npm ci
+      - run: npm run test:contract
+
+  scenario:
+    name: Cross-module scenarios
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - run: npm ci
+      - run: npm run test:scenario
+
+  build-contract:
+    name: Build and userscript contract
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:build
