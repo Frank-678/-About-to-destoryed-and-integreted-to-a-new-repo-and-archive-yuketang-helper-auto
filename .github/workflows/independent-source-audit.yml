@@ -39,6 +39,21 @@ jobs:
       - name: Run all existing tests and build contracts
         run: npm run test:all
 
+  fault-injection:
+    name: Failure-path fault injection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run independent fault-injection tests
+        run: node --test test/audit/*.audit.test.mjs
+
   syntax-and-import-graph:
     name: Syntax and circular import graph
     runs-on: ubuntu-latest
