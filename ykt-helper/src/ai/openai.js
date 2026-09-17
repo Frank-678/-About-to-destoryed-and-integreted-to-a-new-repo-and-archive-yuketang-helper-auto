@@ -149,6 +149,7 @@ export async function queryAI(question, aiCfg, options = {}) {
         }
       },
       onerror: () => reject(new Error('网络请求失败')),
+      ontimeout: () => reject(new Error('AI 请求超时')),
       timeout: 30000,
     });
   });
@@ -200,6 +201,10 @@ function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs 
       onerror: (err) => {
         console.error(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
         reject(new Error('网络请求失败'));
+      },
+      ontimeout: () => {
+        console.error(`[雨课堂助手]${debugLabel} 请求超时`);
+        reject(new Error('AI 请求超时'));
       },
     });
   });
