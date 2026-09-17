@@ -1,0 +1,34 @@
+name: Git history inventory
+
+on:
+  push:
+    branches:
+      - audit/full-regression-20260917
+    paths:
+      - '.github/scripts/history_inventory.py'
+      - '.github/workflows/history-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate complete history inventory
+        run: python .github/scripts/history_inventory.py
+      - name: Commit inventory
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/audit/git-history-inventory.json docs/audit/git-history-inventory.md
+          if git diff --cached --quiet; then
+            echo 'Inventory unchanged.'
+            exit 0
+          fi
+          git commit -m 'docs(audit): inventory every branch and reachable commit'
+          git push origin HEAD:audit/full-regression-20260917
