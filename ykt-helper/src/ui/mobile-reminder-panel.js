@@ -2,7 +2,7 @@
 import { REMINDER_CHANNEL_OPTIONS, REMINDER_EVENT_OPTIONS } from '../core/reminder-preferences.js';
 import { readReminderForm, syncReminderForm } from '../core/settings-form.js';
 import { screenWakeLock } from '../core/screen-wake-lock.js';
-import { ui } from './ui-api.js';
+import { ui } from './ui-context.js';
 
 let mounted = false;
 let root = null;

@@ -1,5 +1,5 @@
 // src/ui/toolbar.js
-import { ui } from './ui-api.js';
+import { ui } from './ui-context.js';
 
 export function installToolbar() {
   // 仅创建容器与按钮；具体面板之后用 HTML/Vue 接入

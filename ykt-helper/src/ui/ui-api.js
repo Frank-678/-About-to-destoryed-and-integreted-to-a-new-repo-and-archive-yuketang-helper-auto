@@ -1,32 +1,14 @@
 // src/ui/ui-api.js
 import { gm } from '../core/env.js';
-import { storage } from '../core/storage.js';
 import { repo } from '../state/repo.js';
-import { toast } from './toast.js';
+import { ui } from './ui-context.js';
 import * as SettingsPanel from './panels/settings.js';
 import * as AIPanel from './panels/ai.js';
 import * as PresPanel from './panels/presentation.js';
 import * as ProbListPanel from './panels/problem-list.js';
 import * as ActivePanel from './panels/active-problems.js';
 import * as TutorialPanel from './panels/tutorial.js';
-import { PROBLEM_TYPE_MAP } from '../core/types.js'
 import { getReminderChannels, getReminderVolume, isReminderEnabled } from '../core/reminder-preferences.js';
-
-const _config = storage.get('config', {});
-_config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
-
-function saveConfig() { 
-  try {
-      storage.set('config', {
-        ...this.config,
-        autoJoinEnabled: !!this.config.autoJoinEnabled,
-        autoAnswerOnAutoJoin: !!this.config.autoAnswerOnAutoJoin,
-      });
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent?.(new CustomEvent('ykt:auto-answer-config-changed'));
-      }
-    } catch (e) { console.warn('[ui.saveConfig] failed', e); }
-}
 
 // 面板层级管理
 let currentZIndex = 10000000;
@@ -78,10 +60,7 @@ function enableNotifyDrag(wrapper, handle, bringToFront) {
   });
 }
 
-export const ui = {
-  get config() { return _config; },
-  saveConfig,
-
+Object.assign(ui, {
   updatePresentationList: PresPanel.updatePresentationList,
   updateSlideView: PresPanel.updateSlideView,
   askAIForCurrent: AIPanel.askAIForCurrent,
@@ -401,13 +380,14 @@ export const ui = {
       : false);
   },
 
-  toast,
   nativeNotify: gm.notify,
 
   // Buttons 状态
   updateAutoAnswerBtn() {
     const el = document.getElementById('ykt-btn-auto-answer');
     if (!el) return;
-    if (_config.autoAnswer) el.classList.add('active'); else el.classList.remove('active');
+    if (this.config.autoAnswer) el.classList.add('active'); else el.classList.remove('active');
   },
-};
+});
+
+export { ui };

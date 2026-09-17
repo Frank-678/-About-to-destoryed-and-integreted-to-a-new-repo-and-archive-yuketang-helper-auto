@@ -1,6 +1,6 @@
 // settings.js (new version)
 import tpl from './settings.html';
-import { ui } from '../ui-api.js';
+import { ui } from '../ui-context.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
 import { screenWakeLock } from '../../core/screen-wake-lock.js';

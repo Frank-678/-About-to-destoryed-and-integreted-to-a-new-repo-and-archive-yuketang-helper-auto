@@ -1,4 +1,4 @@
-import { ui } from '../ui/ui-api.js';
+import { ui } from '../ui/ui-context.js';
 import { repo } from '../state/repo.js';
 import { shouldAutoAnswerForLesson } from '../core/auto-answer-policy.js';
 import { chooseAnswerRoute } from './answer-routing.js';

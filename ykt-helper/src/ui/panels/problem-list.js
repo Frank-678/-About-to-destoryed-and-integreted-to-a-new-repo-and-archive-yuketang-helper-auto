@@ -1,5 +1,5 @@
 import tpl from './problem-list.html';
-import { ui } from '../ui-api.js';
+import { ui } from '../ui-context.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { submitAnswer } from '../../tsm/answer.js';

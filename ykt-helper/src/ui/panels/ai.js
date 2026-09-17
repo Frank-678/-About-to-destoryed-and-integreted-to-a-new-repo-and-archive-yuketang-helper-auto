@@ -1,5 +1,5 @@
 import tpl from './ai.html';
-import { ui } from '../ui-api.js';
+import { ui } from '../ui-context.js';
 import { repo } from '../../state/repo.js';
 import { queryAI, queryAIVision} from '../../ai/openai.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';

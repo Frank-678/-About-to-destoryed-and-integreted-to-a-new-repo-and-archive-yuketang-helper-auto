@@ -1,6 +1,6 @@
 // src/net/ws-interceptor.js
 import { gm } from '../core/env.js';
-import { actions } from '../state/actions.js';
+import { runtimeActionRef } from '../core/runtime-dispatch.js';
 import { repo } from '../state/repo.js';
 import { dispatchRealtimeMessage } from '../core/realtime-dispatch.js';
 import { confirmDanmuSend } from '../core/danmu-sender.js';
@@ -124,23 +124,23 @@ MyWebSocket.addHandler((ws, url) => {
           handlers: {
             onFetchTimeline(timeline, options) {
               console.log('[雨课堂助手][INFO] 收到时间线:', message.timeline);
-              actions.onFetchTimeline(timeline, options);
+              runtimeActionRef.current?.onFetchTimeline(timeline, options);
             },
             onUnlockProblem(problem, options) {
               console.log('[雨课堂助手][INFO] 收到解锁问题:', message.problem);
-              actions.onUnlockProblem(problem, options);
+              runtimeActionRef.current?.onUnlockProblem(problem, options);
             },
             onDanmu(danmu, options) {
               console.log('[雨课堂助手][INFO] 收到弹幕:', danmu?.danmu);
-              void actions.onDanmu(danmu, options);
+              void runtimeActionRef.current?.onDanmu(danmu, options);
             },
             onPublishEvent(event, options) {
               console.log('[雨课堂助手][INFO] 收到课堂发布:', event);
-              actions.onPublishEvent(event, options);
+              runtimeActionRef.current?.onPublishEvent(event, options);
             },
             onLessonFinished(options) {
               console.log('[雨课堂助手][INFO] 课程结束');
-              actions.onLessonFinished(options);
+              runtimeActionRef.current?.onLessonFinished(options);
             },
           },
         });
