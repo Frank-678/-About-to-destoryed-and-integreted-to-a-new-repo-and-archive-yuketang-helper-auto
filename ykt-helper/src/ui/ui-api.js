@@ -1,7 +1,6 @@
 // src/ui/ui-api.js
 import { gm } from '../core/env.js';
 import { storage } from '../core/storage.js';
-import { DEFAULT_CONFIG } from '../core/types.js';
 import { repo } from '../state/repo.js';
 import { toast } from './toast.js';
 import * as SettingsPanel from './panels/settings.js';
@@ -13,31 +12,8 @@ import * as TutorialPanel from './panels/tutorial.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js'
 import { getReminderChannels, getReminderVolume, isReminderEnabled } from '../core/reminder-preferences.js';
 
-const _config = Object.assign({}, DEFAULT_CONFIG, storage.get('config', {}));
-_config.ai.kimiApiKey = storage.get('kimiApiKey', _config.ai.kimiApiKey);
+const _config = storage.get('config', {});
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
-if (typeof _config.autoJoinEnabled === 'undefined') _config.autoJoinEnabled = false;
-if (typeof _config.autoAnswerOnAutoJoin === 'undefined') _config.autoAnswerOnAutoJoin = true;
-if (typeof _config.autoRecoverUnanswered === 'undefined') _config.autoRecoverUnanswered = false;
-if (typeof _config.autoRecoverExpired === 'undefined') _config.autoRecoverExpired = false;
-if (typeof _config.autoScanUnanswered === 'undefined') _config.autoScanUnanswered = false;
-if (typeof _config.iftex === 'undefined') _config.iftex = true;
-if (typeof _config.ai === 'undefined' || !_config.ai) _config.ai = {};
-if (typeof _config.ai.ocrApi === 'undefined') _config.ai.ocrApi = '';
-if (typeof _config.ai.ocrApiKey === 'undefined') _config.ai.ocrApiKey = '';
-if (typeof _config.ai.translateApi === 'undefined') _config.ai.translateApi = '';
-if (typeof _config.ai.translateApiKey === 'undefined') _config.ai.translateApiKey = '';
-if (typeof _config.ai.translateModel === 'undefined') _config.ai.translateModel = '';
-if (typeof _config.notifyProblems === 'undefined') _config.notifyProblems = true;           
-if (typeof _config.notifyPopupDuration === 'undefined') _config.notifyPopupDuration = 5000; 
-if (typeof _config.notifyVolume === 'undefined') _config.notifyVolume = 0.6;                
-if (typeof _config.customNotifyAudioSrc === 'undefined') _config.customNotifyAudioSrc = ''; 
-if (typeof _config.customNotifyAudioName === 'undefined') _config.customNotifyAudioName = ''; 
-_config.autoJoinEnabled = !!_config.autoJoinEnabled;
-_config.autoAnswerOnAutoJoin = !!_config.autoAnswerOnAutoJoin;
-_config.autoRecoverUnanswered = !!_config.autoRecoverUnanswered;
-_config.autoRecoverExpired = !!_config.autoRecoverExpired;
-_config.autoScanUnanswered = !!_config.autoScanUnanswered;
 
 function saveConfig() { 
   try {
