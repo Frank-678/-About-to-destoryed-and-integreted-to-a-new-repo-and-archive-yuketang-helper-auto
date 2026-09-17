@@ -16,7 +16,6 @@ function shouldAutoAnswerForLesson_(lessonId) {
   return false;
 }
 
-
 const DEFAULT_HEADERS = () => ({
   'Content-Type': 'application/json',
   'xtbz': 'ykt',
@@ -38,6 +37,11 @@ function xhrPost(url, data, headers) {
       xhr.open('POST', url);
       for (const [k, v] of Object.entries(headers || {})) xhr.setRequestHeader(k, v);
       xhr.onload = () => {
+        const status = Number(xhr.status);
+        if (Number.isFinite(status) && status !== 0 && (status < 200 || status >= 300)) {
+          reject(new Error(`HTTP ${status} 请求失败`));
+          return;
+        }
         try {
           const resp = JSON.parse(xhr.responseText);
           if (resp && typeof resp === 'object') {
@@ -137,8 +141,7 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
   const waitMs = submitOptions?.waitMs;
   const lessonIdFromOpts = submitOptions && 'lessonId' in submitOptions ? submitOptions.lessonId : undefined;
 
-   // 统一拿 lessonId
-   const lessonId = (lessonIdFromOpts ?? repo?.currentLessonId ?? null);
+  const lessonId = (lessonIdFromOpts ?? repo?.currentLessonId ?? null);
   if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
     const ms = typeof waitMs === 'number' ? Math.max(0, waitMs) : calcAutoWaitMs();
     if (ms > 0) {
@@ -152,7 +155,6 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
   const route = chooseAnswerRoute({ now, endTime, forceRetry });
 
   if (route === 'retry') {
-
     console.group('[雨课堂助手][DEBUG][answer] >>> 进入补交分支判断');
     console.log('problemId:', problem.problemId);
     console.log('pastDeadline:', pastDeadline, '(now=', now, ', endTime=', endTime, ')');
@@ -166,7 +168,6 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
     const et = Number.isFinite(endTime)   ? endTime   : (ps?.endTime);
     console.log('最终用于 retry 的 st=', st, ' et=', et);
 
-    // 计算 dt
     const off  = Math.max(0, retryDtOffsetMs);
     let dt;
 
