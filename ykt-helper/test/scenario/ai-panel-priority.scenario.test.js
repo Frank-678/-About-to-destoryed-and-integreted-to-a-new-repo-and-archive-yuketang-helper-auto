@@ -115,7 +115,11 @@ function lastImageUrl() {
 async function runWithPriority(value) {
   resetSlides();
   ui.config.aiSlidePickPriority = value;
+  // Non-question slides use the two-step vision path. The first deliberately
+  // falls back; the second completes it, so this scenario tests page selection
+  // rather than hanging on an incomplete network fixture.
   gmRecorder.respond({ choices: [{ message: { content: '分析完成' } }] }, 200);
+  gmRecorder.respond({ choices: [{ message: { content: '最终分析完成' } }] }, 200);
   await askAIFusionMode();
   return lastImageUrl();
 }
