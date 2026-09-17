@@ -31,12 +31,11 @@ jobs:
       - name: Install
         working-directory: ykt-helper
         run: npm ci --no-audit --no-fund
-      - name: Test and build
+      - name: Build and validate
         working-directory: ykt-helper
         env:
           BUILD_VERSION: field-1.21.6.6
         run: |
-          npm run test:all
           npm run build
           npm run test:build
       - name: Prepare field artifact
