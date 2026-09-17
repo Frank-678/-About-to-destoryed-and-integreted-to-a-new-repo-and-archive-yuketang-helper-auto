@@ -1,0 +1,104 @@
+name: Prune Unused Build Dependencies
+
+on:
+  push:
+    branches:
+      - audit/full-regression-20260917
+    paths:
+      - .github/workflows/prune-unused-build-deps.yml
+      - ykt-helper/package.json
+      - ykt-helper/package-lock.json
+      - ykt-helper/rollup.config.mjs
+
+permissions:
+  contents: write
+
+jobs:
+  prune-and-verify:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+
+      - id: needed
+        name: Detect whether pruning is still needed
+        run: |
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const p = require('./package.json');
+          const names = [
+            '@rollup/plugin-commonjs',
+            '@rollup/plugin-node-resolve',
+            '@rollup/plugin-typescript',
+            'typescript',
+          ];
+          const present = names.filter(name => p.devDependencies?.[name]);
+          console.log(`prune=${present.length ? 'true' : 'false'}`);
+          console.error(`unused direct devDependencies still present: ${present.join(', ') || '(none)'}`);
+          NODE
+
+      - name: Install locked dependencies
+        if: steps.needed.outputs.prune == 'true'
+        run: npm ci
+
+      - name: Let npm prune package.json and package-lock.json
+        if: steps.needed.outputs.prune == 'true'
+        run: npm uninstall --save-dev @rollup/plugin-commonjs @rollup/plugin-node-resolve @rollup/plugin-typescript typescript
+
+      - name: Verify only package metadata changed
+        if: steps.needed.outputs.prune == 'true'
+        run: |
+          changed="$(git diff --name-only -- package.json package-lock.json)"
+          test -n "$changed"
+          unexpected="$(git diff --name-only | grep -Ev '^ykt-helper/(package\.json|package-lock\.json)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected files changed:" >&2
+            echo "$unexpected" >&2
+            exit 1
+          fi
+
+      - name: Full regression suite
+        if: steps.needed.outputs.prune == 'true'
+        run: npm test
+
+      - name: Build userscript
+        if: steps.needed.outputs.prune == 'true'
+        run: npm run build
+
+      - name: Build contract
+        if: steps.needed.outputs.prune == 'true'
+        run: npm run test:build
+
+      - name: Verify no production dependency audit findings
+        if: steps.needed.outputs.prune == 'true'
+        run: npm audit --omit=dev
+
+      - name: Report remaining dev-only audit findings
+        if: steps.needed.outputs.prune == 'true'
+        run: |
+          npm audit --json > /tmp/npm-audit.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
+          console.log('remaining audit vulnerability counts:', report.metadata?.vulnerabilities || {});
+          console.log('remaining direct dependencies:', Object.keys(require('./package.json').devDependencies || {}));
+          NODE
+
+      - name: Commit verified package metadata
+        if: steps.needed.outputs.prune == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git diff --cached --check
+          git commit -m "build: prune unused Rollup and TypeScript dependencies"
+          git push origin HEAD:audit/full-regression-20260917
