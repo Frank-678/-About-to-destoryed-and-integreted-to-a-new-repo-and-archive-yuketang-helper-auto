@@ -77,6 +77,6 @@ test('periodic reload timer is singleton guarded', () => {
 });
 
 test('periodic reload keeps the lesson-page safety skip', () => {
-  assert.match(source, /skipLessonPages && \/\\\/lesson\\\/\/.test\(window\.location\.pathname\)/);
+  assert.ok(source.includes("if (skipLessonPages && /\\/lesson\\//.test(window.location.pathname)) {"));
 });
 """, encoding='utf-8')
