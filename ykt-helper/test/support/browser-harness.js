@@ -130,7 +130,11 @@ export function installBrowserGlobals({ href = 'https://www.yuketang.cn/web', st
   globalThis.document = document;
   globalThis.localStorage = localStorage;
   globalThis.location = window.location;
-  globalThis.navigator = window.navigator;
+  Object.defineProperty(globalThis, 'navigator', {
+    value: window.navigator,
+    configurable: true,
+    writable: true,
+  });
   globalThis.CustomEvent = class CustomEvent {
     constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
   };
