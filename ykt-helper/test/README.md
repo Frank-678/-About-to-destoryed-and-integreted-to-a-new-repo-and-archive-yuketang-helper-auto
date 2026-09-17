@@ -30,6 +30,7 @@
 - 验证网络 URL、header、payload、返回码和失败行为。
 - 验证 UI/DOM 边界时只 mock 浏览器原语，不复制产品判断逻辑。
 - 一个失败必须能说明“产品与外部系统之间的合同哪里断了”。
+- AI Profile、OCR、翻译等凭据必须覆盖“运行时可读、page localStorage 不落明文、旧配置先私有写成功再清洗”的迁移合同。
 
 ### `test/scenario/*.test.js` — L4 跨模块场景
 
@@ -51,6 +52,7 @@
 要求：
 
 - 检查 userscript metadata、入口覆盖、关键功能确实打进 bundle。
+- 私有凭据存储所需的 `GM_getValue` / `GM_setValue` / `GM_deleteValue` grants 必须存在于最终 bundle。
 - 确认不存在运行时 import/export。
 - 确认最终浏览器脚本没有 Electron/Windows/CLI 产品代码。
 - 历史 release 不应成为 build 输出目标。
@@ -100,7 +102,7 @@ npm run test:build
 npm run test:all
 ```
 
-GitHub Actions 的 `Full Regression Audit` 将五层拆成独立 job。某一层失败时，其他层仍运行，避免第一处失败遮蔽后续问题。
+GitHub Actions 的 `Full Regression` 将五层拆成独立 job。某一层失败时，其他层仍运行，避免第一处失败遮蔽后续问题。
 
 ## 完成标准
 
