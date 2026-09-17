@@ -185,8 +185,10 @@ export function createXMLHttpRequestRecorder() {
       this.headers = {};
       this.responseText = '';
       this.status = 0;
+      this.timeout = 0;
       this.onload = null;
       this.onerror = null;
+      this.ontimeout = null;
       this.method = null;
       this.url = null;
       this.body = null;
@@ -199,6 +201,7 @@ export function createXMLHttpRequestRecorder() {
       const next = queue.shift();
       queueMicrotask(() => {
         if (!next || next.type === 'error') { this.onerror?.(next?.error || new Error('network error')); return; }
+        if (next.type === 'timeout') { this.ontimeout?.(); return; }
         this.status = next.status ?? 200;
         this.responseText = typeof next.body === 'string' ? next.body : JSON.stringify(next.body ?? {});
         this.onload?.();
@@ -210,5 +213,6 @@ export function createXMLHttpRequestRecorder() {
     calls,
     respond(body, status = 200) { queue.push({ type: 'load', body, status }); },
     fail(error) { queue.push({ type: 'error', error }); },
+    timeout() { queue.push({ type: 'timeout' }); },
   };
 }
