@@ -20,13 +20,15 @@ ui.updatePresentationList = () => {};
 ui.toast = () => {};
 ui.notifyClassroomEvent = () => true;
 
+let lessonSeq = 0;
 function reset() {
   repo.presentations.clear();
   repo.slides.clear();
   repo.problems.clear();
   repo.problemStatus.clear();
   repo.encounteredProblems.length = 0;
-  repo.currentLessonId = 'lesson-timeline';
+  const lessonId = `lesson-timeline-${++lessonSeq}`;
+  repo.currentLessonId = lessonId;
   Object.assign(ui.config, {
     autoAnswer: true,
     autoAnswerDelay: 0,
@@ -37,6 +39,7 @@ function reset() {
   // Deliberately exercise the explicit no-profile fallback here; the separate
   // L4 AI scenario covers the full model request path.
   ui.config.ai = { ...ui.config.ai, profiles: [{ id: 'none', apiKey: '' }], activeProfileId: 'none' };
+  return lessonId;
 }
 
 function addProblem(id, slideId) {
@@ -64,13 +67,13 @@ async function waitFor(predicate, timeoutMs = 200) {
 test.after(() => uninstallBrowserGlobals());
 
 test('first timeline snapshot is historical baseline and never queues submission', async () => {
-  reset();
+  const lessonId = reset();
   addProblem('baseline-q', 'baseline-s');
   const before = xhrRecorder.calls.length;
 
   actions.onFetchTimeline([
     { type: 'problem', prob: 'baseline-q', sid: 'baseline-s', pres: 'p1', dt: Date.now(), limit: 60 },
-  ], { lessonId: 'lesson-timeline' });
+  ], { lessonId });
 
   const status = repo.problemStatus.get('baseline-q');
   assert.ok(status);
@@ -82,11 +85,11 @@ test('first timeline snapshot is historical baseline and never queues submission
 });
 
 test('a problem first appearing in a later timeline snapshot becomes live and reaches submit', async () => {
-  reset();
+  const lessonId = reset();
   addProblem('old-q', 'old-s');
   actions.onFetchTimeline([
     { type: 'problem', prob: 'old-q', sid: 'old-s', pres: 'p1', dt: Date.now(), limit: 60 },
-  ], { lessonId: 'lesson-timeline' });
+  ], { lessonId });
 
   const newProblem = addProblem('new-q', 'new-s');
   xhrRecorder.respond({ code: 0, data: {} });
@@ -94,7 +97,7 @@ test('a problem first appearing in a later timeline snapshot becomes live and re
   actions.onFetchTimeline([
     { type: 'problem', prob: 'old-q', sid: 'old-s', pres: 'p1', dt: Date.now(), limit: 60 },
     { type: 'problem', prob: 'new-q', sid: 'new-s', pres: 'p1', dt: Date.now(), limit: 60 },
-  ], { lessonId: 'lesson-timeline' });
+  ], { lessonId });
 
   const status = repo.problemStatus.get('new-q');
   assert.ok(status);
@@ -108,18 +111,18 @@ test('a problem first appearing in a later timeline snapshot becomes live and re
 });
 
 test('the same timeline problem is never promoted twice', async () => {
-  reset();
+  const lessonId = reset();
   addProblem('same-q', 'same-s');
-  actions.onFetchTimeline([], { lessonId: 'lesson-timeline' });
+  actions.onFetchTimeline([], { lessonId });
   xhrRecorder.respond({ code: 0, data: {} });
 
   const entry = { type: 'problem', prob: 'same-q', sid: 'same-s', pres: 'p1', dt: Date.now(), limit: 60 };
-  actions.onFetchTimeline([entry], { lessonId: 'lesson-timeline' });
+  actions.onFetchTimeline([entry], { lessonId });
   actions.tickAutoAnswer();
   assert.equal(await waitFor(() => repo.problemStatus.get('same-q')?.done === true), true);
   const afterFirst = xhrRecorder.calls.length;
 
-  actions.onFetchTimeline([entry], { lessonId: 'lesson-timeline' });
+  actions.onFetchTimeline([entry], { lessonId });
   actions.tickAutoAnswer();
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(xhrRecorder.calls.length, afterFirst);
@@ -130,12 +133,14 @@ test('timeline baseline state is isolated per lesson', () => {
   addProblem('a1', 'sa1');
   addProblem('b1', 'sb1');
   addProblem('a2', 'sa2');
-  actions.onFetchTimeline([{ type: 'problem', prob: 'a1', sid: 'sa1' }], { lessonId: 'lesson-a' });
-  actions.onFetchTimeline([{ type: 'problem', prob: 'b1', sid: 'sb1' }], { lessonId: 'lesson-b' });
+  const lessonA = `lesson-a-${++lessonSeq}`;
+  const lessonB = `lesson-b-${++lessonSeq}`;
+  actions.onFetchTimeline([{ type: 'problem', prob: 'a1', sid: 'sa1' }], { lessonId: lessonA });
+  actions.onFetchTimeline([{ type: 'problem', prob: 'b1', sid: 'sb1' }], { lessonId: lessonB });
   actions.onFetchTimeline([
     { type: 'problem', prob: 'a1', sid: 'sa1' },
     { type: 'problem', prob: 'a2', sid: 'sa2' },
-  ], { lessonId: 'lesson-a' });
+  ], { lessonId: lessonA });
 
   assert.equal(repo.problemStatus.get('a2')?.autoAnswerQueued, true);
   assert.equal(repo.problemStatus.get('b1')?.autoAnswerQueued, false);
