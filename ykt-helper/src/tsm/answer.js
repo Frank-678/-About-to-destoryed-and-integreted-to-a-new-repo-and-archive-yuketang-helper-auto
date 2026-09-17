@@ -1,5 +1,6 @@
 import { ui } from '../ui/ui-api.js';
 import { repo } from '../state/repo.js';
+import { shouldAutoAnswerForLesson } from '../core/auto-answer-policy.js';
 import { chooseAnswerRoute } from './answer-routing.js';
 
 const ANSWER_REQUEST_TIMEOUT_MS = 15000;
@@ -9,13 +10,6 @@ function calcAutoWaitMs() {
   const base = Math.max(0, (ui?.config?.autoAnswerDelay ?? 0));
   const rand = Math.max(0, (ui?.config?.autoAnswerRandomDelay ?? 0));
   return base + (rand ? Math.floor(Math.random() * rand) : 0);
-}
-function shouldAutoAnswerForLesson_(lessonId) {
-  if (ui?.config?.autoAnswer) return true;
-  if (!lessonId) return false;
-  if (repo?.autoJoinedLessons?.has(lessonId) && ui?.config?.autoAnswerOnAutoJoin) return true;
-  if (repo?.forceAutoAnswerLessons?.has(lessonId)) return true;
-  return false;
 }
 
 const DEFAULT_HEADERS = () => ({
@@ -149,7 +143,13 @@ export async function submitAnswer(problem, result, submitOptions = {}) {
   const lessonIdFromOpts = submitOptions && 'lessonId' in submitOptions ? submitOptions.lessonId : undefined;
 
   const lessonId = (lessonIdFromOpts ?? repo?.currentLessonId ?? null);
-  if (autoGate && shouldAutoAnswerForLesson_(lessonId)) {
+  const autoAnswerEnabled = shouldAutoAnswerForLesson({
+    lessonId,
+    config: ui?.config,
+    autoJoinedLessons: repo?.autoJoinedLessons,
+    forceAutoAnswerLessons: repo?.forceAutoAnswerLessons,
+  });
+  if (autoGate && autoAnswerEnabled) {
     const ms = typeof waitMs === 'number' ? Math.max(0, waitMs) : calcAutoWaitMs();
     if (ms > 0) {
       const guard = (typeof endTime === 'number') ? Math.max(0, endTime - Date.now() - 80) : ms;
