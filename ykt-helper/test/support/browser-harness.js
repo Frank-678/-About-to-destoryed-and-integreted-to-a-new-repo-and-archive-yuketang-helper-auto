@@ -14,49 +14,134 @@ export function createMemoryStorage(initial = {}) {
 function makeClassList() {
   const values = new Set();
   return {
-    add(...names) { names.forEach(name => values.add(name)); },
-    remove(...names) { names.forEach(name => values.delete(name)); },
-    contains(name) { return values.has(name); },
+    add(...names) { names.filter(Boolean).forEach(name => values.add(String(name))); },
+    remove(...names) { names.forEach(name => values.delete(String(name))); },
+    contains(name) { return values.has(String(name)); },
     toggle(name, force) {
-      if (force === true) { values.add(name); return true; }
-      if (force === false) { values.delete(name); return false; }
-      if (values.has(name)) { values.delete(name); return false; }
-      values.add(name); return true;
+      const key = String(name);
+      if (force === true) { values.add(key); return true; }
+      if (force === false) { values.delete(key); return false; }
+      if (values.has(key)) { values.delete(key); return false; }
+      values.add(key); return true;
+    },
+    setFromString(value) {
+      values.clear();
+      String(value || '').split(/\s+/).filter(Boolean).forEach(name => values.add(name));
     },
     toString() { return [...values].join(' '); },
   };
+}
+
+function matchesSelector(element, selector) {
+  const normalized = String(selector || '').trim();
+  if (!normalized) return false;
+  if (normalized.startsWith('.')) return element.classList?.contains(normalized.slice(1)) === true;
+  if (normalized.startsWith('#')) return String(element.id || '') === normalized.slice(1);
+  return String(element.tagName || '').toLowerCase() === normalized.toLowerCase();
 }
 
 export function createFakeElement(tagName = 'div') {
   const listeners = new Map();
   const children = [];
   const attributes = new Map();
-  return {
+  const classList = makeClassList();
+  let innerHTML = '';
+  let className = '';
+
+  const element = {
     tagName: String(tagName).toUpperCase(),
+    id: '',
     style: {},
     dataset: {},
-    classList: makeClassList(),
+    classList,
     children,
     parentNode: null,
     textContent: '',
-    innerHTML: '',
     value: '',
     disabled: false,
     checked: false,
+    onclick: null,
     appendChild(child) { children.push(child); child.parentNode = this; return child; },
     remove() { if (!this.parentNode?.children) return; const i = this.parentNode.children.indexOf(this); if (i >= 0) this.parentNode.children.splice(i, 1); },
-    setAttribute(name, value) { attributes.set(String(name), String(value)); },
-    getAttribute(name) { return attributes.get(String(name)) ?? null; },
+    setAttribute(name, value) {
+      const key = String(name);
+      const str = String(value);
+      attributes.set(key, str);
+      if (key === 'id') this.id = str;
+      if (key === 'class') this.className = str;
+    },
+    getAttribute(name) {
+      const key = String(name);
+      if (key === 'id' && this.id) return this.id;
+      if (key === 'class' && this.className) return this.className;
+      return attributes.get(key) ?? null;
+    },
     addEventListener(type, fn) { const list = listeners.get(type) || []; list.push(fn); listeners.set(type, list); },
     removeEventListener(type, fn) { const list = listeners.get(type) || []; listeners.set(type, list.filter(item => item !== fn)); },
     dispatchEvent(event) { for (const fn of listeners.get(event?.type) || []) fn.call(this, event); return true; },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
-    closest() { return null; },
+    querySelector(selector) {
+      for (const child of children) {
+        if (matchesSelector(child, selector)) return child;
+        const nested = child.querySelector?.(selector);
+        if (nested) return nested;
+      }
+      return null;
+    },
+    querySelectorAll(selector) {
+      const found = [];
+      for (const child of children) {
+        if (matchesSelector(child, selector)) found.push(child);
+        found.push(...(child.querySelectorAll?.(selector) || []));
+      }
+      return found;
+    },
+    closest(selector) {
+      let node = this;
+      while (node) {
+        if (matchesSelector(node, selector)) return node;
+        node = node.parentNode;
+      }
+      return null;
+    },
     focus() {},
-    click() { this.dispatchEvent({ type: 'click', target: this, preventDefault() {} }); },
+    click() {
+      if (this.disabled) return undefined;
+      const event = { type: 'click', target: this, currentTarget: this, preventDefault() {} };
+      const result = typeof this.onclick === 'function' ? this.onclick(event) : undefined;
+      this.dispatchEvent(event);
+      return result;
+    },
     getBoundingClientRect() { return { left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40 }; },
   };
+
+  Object.defineProperties(element, {
+    className: {
+      get() { return className; },
+      set(value) {
+        className = String(value || '');
+        classList.setFromString(className);
+        attributes.set('class', className);
+      },
+      enumerable: true,
+      configurable: true,
+    },
+    innerHTML: {
+      get() { return innerHTML; },
+      set(value) {
+        innerHTML = String(value ?? '');
+        if (innerHTML === '') children.splice(0, children.length);
+      },
+      enumerable: true,
+      configurable: true,
+    },
+    firstElementChild: {
+      get() { return children[0] ?? null; },
+      enumerable: true,
+      configurable: true,
+    },
+  });
+
+  return element;
 }
 
 export function createFakeDocument() {
@@ -72,10 +157,14 @@ export function createFakeDocument() {
     scripts: [],
     styleSheets: [],
     createElement: createFakeElement,
-    getElementById(id) { return elementsById.get(id) || null; },
-    registerElement(id, element = createFakeElement()) { elementsById.set(id, element); return element; },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    getElementById(id) {
+      const direct = elementsById.get(String(id));
+      if (direct) return direct;
+      return body.querySelector(`#${id}`) || head.querySelector(`#${id}`) || null;
+    },
+    registerElement(id, element = createFakeElement()) { element.id = String(id); elementsById.set(String(id), element); return element; },
+    querySelector(selector) { return body.querySelector(selector) || head.querySelector(selector); },
+    querySelectorAll(selector) { return [...body.querySelectorAll(selector), ...head.querySelectorAll(selector)]; },
     addEventListener() {},
     removeEventListener() {},
   };
