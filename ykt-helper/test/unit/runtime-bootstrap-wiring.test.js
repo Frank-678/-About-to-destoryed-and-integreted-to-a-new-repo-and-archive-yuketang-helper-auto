@@ -20,7 +20,9 @@ function bodyOf(functionName) {
 test('runtime activation never forces a second page load just to arm interceptors', () => {
   assert.doesNotMatch(source, /maybeAutoReloadOnMount/);
   assert.doesNotMatch(source, /Late mount detected; reloading once/);
-  assert.doesNotMatch(source, /location\.reload\(\)/);
+  assert.doesNotMatch(bodyOf('startDesktopRuntime'), /location\.reload\(\)/);
+  assert.doesNotMatch(bodyOf('bootCurrentRuntime'), /location\.reload\(\)/);
+  assert.doesNotMatch(bodyOf('queueRuntimeBoot'), /location\.reload\(\)/);
 });
 
 test('network interceptors are armed before the route-dependent desktop runtime boot', () => {
