@@ -95,6 +95,8 @@ export function installBrowserGlobals({ href = 'https://www.yuketang.cn/web', st
   const events = createEventTarget();
   const url = new URL(href);
   const localStorage = createMemoryStorage(storage);
+  const requestAnimationFrame = callback => setTimeout(() => callback(Date.now()), 0);
+  const cancelAnimationFrame = handle => clearTimeout(handle);
   const window = {
     ...events,
     document,
@@ -122,6 +124,8 @@ export function installBrowserGlobals({ href = 'https://www.yuketang.cn/web', st
     clearTimeout,
     setInterval,
     clearInterval,
+    requestAnimationFrame,
+    cancelAnimationFrame,
   };
   window.window = window;
   window.unsafeWindow = window;
@@ -130,6 +134,8 @@ export function installBrowserGlobals({ href = 'https://www.yuketang.cn/web', st
   globalThis.document = document;
   globalThis.localStorage = localStorage;
   globalThis.location = window.location;
+  globalThis.requestAnimationFrame = requestAnimationFrame;
+  globalThis.cancelAnimationFrame = cancelAnimationFrame;
   Object.defineProperty(globalThis, 'navigator', {
     value: window.navigator,
     configurable: true,
@@ -145,7 +151,7 @@ export function installBrowserGlobals({ href = 'https://www.yuketang.cn/web', st
 }
 
 export function uninstallBrowserGlobals() {
-  for (const key of ['window', 'document', 'localStorage', 'location', 'navigator', 'CustomEvent', 'Event', 'HTMLElement', 'MutationObserver', 'XMLHttpRequest']) {
+  for (const key of ['window', 'document', 'localStorage', 'location', 'navigator', 'requestAnimationFrame', 'cancelAnimationFrame', 'CustomEvent', 'Event', 'HTMLElement', 'MutationObserver', 'XMLHttpRequest']) {
     try { delete globalThis[key]; } catch {}
   }
 }
