@@ -26,7 +26,13 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ykt-helper/package-lock.json
-      - run: npm ci
+      - name: Install locked dependencies
+        run: |
+          npm ci --no-audit --no-fund || {
+            echo 'npm ci failed once; verifying cache and retrying once' >&2
+            npm cache verify || true
+            npm ci --no-audit --no-fund
+          }
       - run: npm run test:legacy
 
   unit:
@@ -42,7 +48,13 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ykt-helper/package-lock.json
-      - run: npm ci
+      - name: Install locked dependencies
+        run: |
+          npm ci --no-audit --no-fund || {
+            echo 'npm ci failed once; verifying cache and retrying once' >&2
+            npm cache verify || true
+            npm ci --no-audit --no-fund
+          }
       - run: npm run test:unit
 
   contract:
@@ -58,7 +70,13 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ykt-helper/package-lock.json
-      - run: npm ci
+      - name: Install locked dependencies
+        run: |
+          npm ci --no-audit --no-fund || {
+            echo 'npm ci failed once; verifying cache and retrying once' >&2
+            npm cache verify || true
+            npm ci --no-audit --no-fund
+          }
       - run: npm run test:contract
 
   scenario:
@@ -74,7 +92,13 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ykt-helper/package-lock.json
-      - run: npm ci
+      - name: Install locked dependencies
+        run: |
+          npm ci --no-audit --no-fund || {
+            echo 'npm ci failed once; verifying cache and retrying once' >&2
+            npm cache verify || true
+            npm ci --no-audit --no-fund
+          }
       - run: npm run test:scenario
 
   build-contract:
@@ -90,6 +114,12 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ykt-helper/package-lock.json
-      - run: npm ci
+      - name: Install locked dependencies
+        run: |
+          npm ci --no-audit --no-fund || {
+            echo 'npm ci failed once; verifying cache and retrying once' >&2
+            npm cache verify || true
+            npm ci --no-audit --no-fund
+          }
       - run: npm run build
       - run: npm run test:build
