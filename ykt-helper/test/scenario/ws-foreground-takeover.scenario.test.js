@@ -71,6 +71,7 @@ test('foreground native socket takes ownership without later managed-close delet
   const native = new browser.window.WebSocket('wss://www.yuketang.cn/wsapp/');
 
   assert.notEqual(native, managed);
+  assert.equal(native.__yktManaged, false);
   assert.equal(repo.lessonSockets.get('lesson-owner'), native,
     'foreground native socket should become the current lesson owner');
   assert.equal(repo.autoJoinedLessons.has('lesson-owner'), false,
@@ -90,22 +91,24 @@ test('foreground native socket takes ownership without later managed-close delet
   assert.equal(repo.lessonSockets.get('lesson-owner'), native);
 });
 
-test('AutoJoin stop is defensive against a stale autoJoined marker on a native owner', () => {
+test('native owner cannot acquire an AutoJoin identity, so AutoJoin stop cannot close it', () => {
   resetLessonState();
   const native = new NativeWebSocket('wss://www.yuketang.cn/wsapp/');
-  native.__yktLessonId = 'lesson-stale-marker';
-  // Deliberately simulate stale persisted/runtime bookkeeping from an older path.
-  repo.markLessonConnected('lesson-stale-marker', native, 'native-token');
-  repo.markLessonAutoJoined('lesson-stale-marker', true);
+  native.__yktLessonId = 'lesson-native-owner';
+  native.__yktManaged = false;
+  repo.markLessonConnected('lesson-native-owner', native, 'native-token');
+
+  const marked = repo.markLessonAutoJoined('lesson-native-owner', true);
+  assert.equal(marked, false);
+  assert.equal(repo.autoJoinedLessons.has('lesson-native-owner'), false);
 
   actions.stopAutoJoinLoop();
 
   assert.equal(native.closeCalls, 0,
-    'stopAutoJoinLoop must only close sockets explicitly owned by AutoJoin');
-  assert.equal(repo.lessonSockets.get('lesson-stale-marker'), native);
-  assert.equal(repo.listeningLessons.has('lesson-stale-marker'), true);
-  assert.equal(repo.autoJoinedLessons.has('lesson-stale-marker'), false,
-    'stale AutoJoin identity should still be cleared');
+    'stopAutoJoinLoop must only close sockets that can hold AutoJoin ownership');
+  assert.equal(repo.lessonSockets.get('lesson-native-owner'), native);
+  assert.equal(repo.listeningLessons.has('lesson-native-owner'), true);
+  assert.equal(repo.autoJoinedLessons.has('lesson-native-owner'), false);
 });
 
 test.after(() => {
