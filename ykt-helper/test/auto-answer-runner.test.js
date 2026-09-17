@@ -231,3 +231,37 @@ test('keeps the first successful submission when verification correction cannot 
   assert.equal(status.phase, 'done');
   assert.equal(status.done, true);
 });
+
+
+test('untimed empty-result problems reach the answer runner', async () => {
+  const { createAutoAnswerRunner } = await loadRunner();
+  for (const result of [[], {}]) {
+    let submitted = 0;
+    const runner = createAutoAnswerRunner({
+      hasActiveProfile: () => false,
+      makeDefaultAnswer: () => ['A'],
+      submitAnswer: async () => { submitted += 1; return { route: 'answer' }; },
+    });
+    const problem = { problemId: 'untimed-empty-result', problemType: 1, result };
+    const status = { done: false, answering: false, endTime: null, phase: 'queued', autoAnswerTime: null };
+    const response = await runner.run(problem, status);
+    assert.equal(response.ok, true);
+    assert.equal(submitted, 1);
+  }
+});
+
+test('manual force with allowResubmit bypasses done status and existing result', async () => {
+  const { createAutoAnswerRunner } = await loadRunner();
+  let submitted = 0;
+  const runner = createAutoAnswerRunner({
+    hasActiveProfile: () => false,
+    makeDefaultAnswer: () => ['B'],
+    submitAnswer: async () => { submitted += 1; return { route: 'answer' }; },
+  });
+  const problem = { problemId: 'force-resubmit', problemType: 1, result: ['A'] };
+  const status = { done: true, answering: false, endTime: null, phase: 'done', autoAnswerTime: null };
+  const response = await runner.run(problem, status, { force: true, allowResubmit: true, source: 'manual' });
+  assert.equal(response.ok, true);
+  assert.equal(submitted, 1);
+  assert.deepEqual(response.answer, ['B']);
+});

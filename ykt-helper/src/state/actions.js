@@ -20,6 +20,7 @@ import { getProblemEndTime } from './problem-timing.js';
 import { createProblemRecoveryStore, shouldRecoverProblem } from './auto-answer-recovery.js';
 import { createAutoAnswerRunner } from './auto-answer-runner.js';
 import { buildAnswerSubmitOptions } from './answer-editor.js';
+import { hasSubmittedAnswer } from '../core/answer-state.js';
 import { createDanmuFollowController } from '../core/danmu-follow.js';
 import { sendDanmuText } from '../core/danmu-sender.js';
 import { isLiveProblemSource } from '../core/problem-event-source.js';
@@ -275,7 +276,7 @@ function createStatusForProblem(problem, { autoAnswerQueued = false } = {}) {
     lessonId: problem?.lessonId || null,
     startTime: problem?.startTime ?? null,
     endTime: problem?.endTime ?? null,
-    done: !!problem?.result,
+    done: hasSubmittedAnswer(problem?.result),
     autoAnswerTime: null,
     answering: false,
     phase: 'queued',
@@ -317,7 +318,7 @@ function restorePendingProblemStatuses() {
   for (const record of store.list()) {
     const problem = getProblemById(record.problemId);
     if (!problem) continue;
-    if (record.done || record.phase === 'done' || problem.result) {
+    if (record.done || record.phase === 'done' || hasSubmittedAnswer(problem.result)) {
       store.remove(record.problemId);
       continue;
     }
@@ -338,7 +339,7 @@ function restorePendingProblemStatuses() {
     for (const encountered of repo.encounteredProblems || []) {
       const problem = getProblemById(encountered.problemId);
       const pid = problemIdKey(encountered.problemId);
-      if (!problem || !pid || problem.result || getProblemStatus(pid)) continue;
+      if (!problem || !pid || hasSubmittedAnswer(problem.result) || getProblemStatus(pid)) continue;
       const status = createStatusForProblem({
         ...problem,
         presentationId: encountered.presentationId,
@@ -505,7 +506,7 @@ export function startAutoAnswerLoop() {
     repo.problemStatus.forEach((status, pid) => {
       if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
         const problem = getProblemById(pid);
-        if (problem && !problem.result) {
+        if (problem && !hasSubmittedAnswer(problem.result)) {
           status.autoAnswerTime = null;
           persistProblemStatus(pid, status, problem);
           handleAutoAnswerInternal(problem, {
@@ -624,7 +625,7 @@ export const actions = {
     status.lessonId = lessonId ? String(lessonId) : (status.lessonId || repo.currentLessonId || null);
     status.startTime = payload.dt ?? status.startTime;
     status.endTime = getProblemEndTime(payload.dt, payload.limit) ?? status.endTime ?? null;
-    status.done = !!problem.result;
+    status.done = hasSubmittedAnswer(problem.result);
     status.answering = !!status.answering;
     status.phase = statusPhase(status);
     status.autoAnswerTime = status.autoAnswerTime ?? null;
@@ -641,7 +642,7 @@ export const actions = {
     repo.problemStatus.set(pid, status);
     if (isLiveUnlock) persistProblemStatus(pid, status, problem);
 
-    if (problem.result) {
+    if (hasSubmittedAnswer(problem.result)) {
       console.log('[雨课堂助手][WARN][onUnlockProblem] 题目已作答，跳过自动流程');
       recoveryStore?.remove(pid);
       return false;
@@ -664,7 +665,9 @@ export const actions = {
       return notified;
     }
 
-    if (autoAnswerEnabled && status.autoAnswerQueued && !status.answering && status.phase !== 'failed' && status.autoAnswerTime === null) {
+    if (autoAnswerEnabled && status.autoAnswerQueued && !status.answering && status.autoAnswerTime === null) {
+      status.phase = 'queued';
+      status.lastError = '';
       const delay = expired
         ? 0
         : ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
@@ -777,6 +780,7 @@ export const actions = {
       ...options,
       status,
       force: true,
+      allowResubmit: true,
       source: 'manual',
     });
   },

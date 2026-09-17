@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（JS版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.21.6.3
+// @version      1.21.6.4
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -4005,7 +4005,9 @@
           problemType: e.problemType
         }, result, {
           startTime: startTime,
-          endTime: endTime
+          endTime: endTime,
+          autoGate: false,
+          waitMs: 0
         });
         ui.toast(route === "answer" ? "提交成功" : "补交成功");
         const merged = Object.assign({}, prob || {}, {
@@ -4030,7 +4032,9 @@
             }, result, {
               startTime: startTime,
               endTime: endTime,
-              forceRetry: true
+              forceRetry: true,
+              autoGate: false,
+              waitMs: 0
             });
             ui.toast("补交成功");
             const merged = Object.assign({}, prob || {}, {
@@ -4067,7 +4071,9 @@
         }, result, {
           startTime: startTime,
           endTime: endTime,
-          forceRetry: true
+          forceRetry: true,
+          autoGate: false,
+          waitMs: 0
         });
         ui.toast("补交成功");
         const merged = Object.assign({}, prob || {}, {
@@ -5428,11 +5434,20 @@
       clear: clear
     };
   }
+  /** Return true only when a backend/local result contains meaningful submitted content. */  function hasSubmittedAnswer(result) {
+    if (result === null || result === void 0) return false;
+    if (typeof result === "string") return result.trim().length > 0;
+    if (Array.isArray(result)) return result.some(hasSubmittedAnswer);
+    if (typeof result === "object") return Object.values(result).some(hasSubmittedAnswer);
+    return true;
+  }
   /**
    * Runs one AI-answer attempt.  Dependencies are injected so the state action
    * can keep browser-specific UI and network code outside this state machine.
    */  function isExpired(status, now) {
-    const endTime = Number(status?.endTime);
+    const rawEndTime = status?.endTime;
+    if (rawEndTime === null || rawEndTime === void 0 || rawEndTime === "") return false;
+    const endTime = Number(rawEndTime);
     return Number.isFinite(endTime) && now >= endTime;
   }
   function emitStatus(status, onStatusChange, problem) {
@@ -5459,7 +5474,7 @@
         ok: false,
         reason: "answering"
       };
-      if (status.done || problem.result && !allowResubmit) return {
+      if ((status.done || hasSubmittedAnswer(problem.result)) && !allowResubmit) return {
         ok: false,
         reason: "answered"
       };
@@ -6482,7 +6497,7 @@
       lessonId: problem?.lessonId || null,
       startTime: problem?.startTime ?? null,
       endTime: problem?.endTime ?? null,
-      done: !!problem?.result,
+      done: hasSubmittedAnswer(problem?.result),
       autoAnswerTime: null,
       answering: false,
       phase: "queued",
@@ -6520,7 +6535,7 @@
     for (const record of store.list()) {
       const problem = getProblemById(record.problemId);
       if (!problem) continue;
-      if (record.done || record.phase === "done" || problem.result) {
+      if (record.done || record.phase === "done" || hasSubmittedAnswer(problem.result)) {
         store.remove(record.problemId);
         continue;
       }
@@ -6538,7 +6553,7 @@
     if (ui.config.autoScanUnanswered === true) for (const encountered of repo.encounteredProblems || []) {
       const problem = getProblemById(encountered.problemId);
       const pid = problemIdKey(encountered.problemId);
-      if (!problem || !pid || problem.result || getProblemStatus(pid)) continue;
+      if (!problem || !pid || hasSubmittedAnswer(problem.result) || getProblemStatus(pid)) continue;
       const status = createStatusForProblem({
         ...problem,
         presentationId: encountered.presentationId,
@@ -6688,7 +6703,7 @@
       repo.problemStatus.forEach((status, pid) => {
         if (status.autoAnswerTime !== null && now >= status.autoAnswerTime) {
           const problem = getProblemById(pid);
-          if (problem && !problem.result) {
+          if (problem && !hasSubmittedAnswer(problem.result)) {
             status.autoAnswerTime = null;
             persistProblemStatus(pid, status, problem);
             handleAutoAnswerInternal(problem, {
@@ -6793,7 +6808,7 @@
       status.lessonId = lessonId ? String(lessonId) : status.lessonId || repo.currentLessonId || null;
       status.startTime = payload.dt ?? status.startTime;
       status.endTime = getProblemEndTime(payload.dt, payload.limit) ?? status.endTime ?? null;
-      status.done = !!problem.result;
+      status.done = hasSubmittedAnswer(problem.result);
       status.answering = !!status.answering;
       status.phase = statusPhase(status);
       status.autoAnswerTime = status.autoAnswerTime ?? null;
@@ -6805,7 +6820,7 @@
       if (expired && ui.config.autoForceRetry === true) status.recoveryForceRetry = true;
       repo.problemStatus.set(pid, status);
       if (isLiveUnlock) persistProblemStatus(pid, status, problem);
-      if (problem.result) {
+      if (hasSubmittedAnswer(problem.result)) {
         console.log("[雨课堂助手][WARN][onUnlockProblem] 题目已作答，跳过自动流程");
         recoveryStore?.remove(pid);
         return false;
@@ -6824,7 +6839,9 @@
         ui.updateActiveProblems();
         return notified;
       }
-      if (autoAnswerEnabled && status.autoAnswerQueued && !status.answering && status.phase !== "failed" && status.autoAnswerTime === null) {
+      if (autoAnswerEnabled && status.autoAnswerQueued && !status.answering && status.autoAnswerTime === null) {
+        status.phase = "queued";
+        status.lastError = "";
         const delay = expired ? 0 : ui.config.autoAnswerDelay + randInt(0, ui.config.autoAnswerRandomDelay);
         status.autoAnswerTime = Date.now() + delay;
         console.log(`[雨课堂助手][INFO][onUnlockProblem] 将在 ${Math.floor(delay / 1e3)} 秒后自动作答`);
@@ -6940,6 +6957,7 @@
         ...options,
         status: status,
         force: true,
+        allowResubmit: true,
         source: "manual"
       });
     },
@@ -7713,13 +7731,15 @@
       return false;
     }
   }
+  let periodicReloadTimer = null;
   function startPeriodicReload(opts = {}) {
     try {
+      if (periodicReloadTimer !== null) return periodicReloadTimer;
       const intervalMs = Number.isFinite(opts.intervalMs) ? opts.intervalMs : 5 * 60 * 1e3;
       const onlyWhenHidden = opts.onlyWhenHidden !== false;
       const skipLessonPages = opts.skipLessonPages !== false;
       if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
-      window.setInterval(() => {
+      periodicReloadTimer = window.setInterval(() => {
         try {
           console.log("[雨课堂助手]][DEBUG] periodic tick", {
             pathname: window.location.pathname,
@@ -7739,7 +7759,10 @@
           console.error(e);
         }
       }, intervalMs);
-    } catch {}
+      return periodicReloadTimer;
+    } catch {
+      return null;
+    }
   }
   let desktopStarted = false;
   let runtimeBootQueued = false;
@@ -7747,11 +7770,6 @@
     if (desktopStarted) return;
     desktopStarted = true;
     if (maybeAutoReloadOnMount()) return;
-    startPeriodicReload({
-      intervalMs: 1 * 60 * 1e3,
-      onlyWhenHidden: false,
-      skipLessonPages: true
-    });
     loadFA();
     injectStyles();
     ui._mountAll?.();
@@ -7799,6 +7817,13 @@
       targetDocument: targetWindow.document || document
     });
     if (guard.redirected || guard.reason === "loop-prevented") return;
+    // Periodic refresh is a base service, not a desktop-runtime side effect.
+    // It keeps running across SPA route changes, but each tick still skips /lesson/ pages.
+        startPeriodicReload({
+      intervalMs: 1 * 60 * 1e3,
+      onlyWhenHidden: false,
+      skipLessonPages: true
+    });
     // WebSocket needs to be patched at document-start.
         installWSInterceptor({
       getRuntimeMode: () => getRuntimeMode(window.location.pathname)

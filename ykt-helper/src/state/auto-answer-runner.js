@@ -1,10 +1,14 @@
+import { hasSubmittedAnswer } from '../core/answer-state.js';
+
 /**
  * Runs one AI-answer attempt.  Dependencies are injected so the state action
  * can keep browser-specific UI and network code outside this state machine.
  */
 
 function isExpired(status, now) {
-  const endTime = Number(status?.endTime);
+  const rawEndTime = status?.endTime;
+  if (rawEndTime === null || rawEndTime === undefined || rawEndTime === '') return false;
+  const endTime = Number(rawEndTime);
   return Number.isFinite(endTime) && now >= endTime;
 }
 
@@ -47,7 +51,7 @@ export function createAutoAnswerRunner({
   } = {}) {
     if (!problem || !status) return { ok: false, reason: 'missing-status' };
     if (status.answering) return { ok: false, reason: 'answering' };
-    if (status.done || (problem.result && !allowResubmit)) {
+    if ((status.done || hasSubmittedAnswer(problem.result)) && !allowResubmit) {
       return { ok: false, reason: 'answered' };
     }
 
