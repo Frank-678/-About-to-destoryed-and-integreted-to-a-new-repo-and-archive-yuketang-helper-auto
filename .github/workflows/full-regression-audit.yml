@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - audit/full-regression-20260917
+    paths:
+      - 'ykt-helper/**'
+      - '.github/workflows/full-regression-audit.yml'
   workflow_dispatch:
 
 permissions:
