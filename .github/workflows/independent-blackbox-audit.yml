@@ -1,0 +1,124 @@
+name: Independent Black-box Audit
+
+on:
+  push:
+    branches:
+      - audit/independent-blackbox-20260917
+    paths:
+      - 'ykt-helper/**'
+      - 'release/**'
+      - '.github/workflows/independent-blackbox-audit.yml'
+  pull_request:
+    paths:
+      - 'ykt-helper/**'
+      - 'release/**'
+      - '.github/workflows/independent-blackbox-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-blackbox-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  artifact-contract:
+    name: Final userscript artifact contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - name: Install locked build dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build final userscript
+        env:
+          BUILD_VERSION: independent-blackbox
+        run: npm run build
+      - name: Validate final file only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/ykt-helper-1216.user.js
+          node --check dist/ykt-helper-1216.user.js
+          test "$(grep -c '^// ==UserScript==$' dist/ykt-helper-1216.user.js)" -eq 1
+          test "$(grep -c '^// ==/UserScript==$' dist/ykt-helper-1216.user.js)" -eq 1
+          grep -q '^// @version[[:space:]]\+1\.21\.6$' dist/ykt-helper-1216.user.js
+          grep -q '^// @run-at[[:space:]]\+document-start$' dist/ykt-helper-1216.user.js
+          grep -q '^// @match[[:space:]]\+https://www\.yuketang\.cn/m/v2\*$' dist/ykt-helper-1216.user.js
+      - name: Reject obvious secret material in distributable
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -En '(sk-[A-Za-z0-9_-]{24,}|AIza[0-9A-Za-z_-]{30,}|gh[pousr]_[A-Za-z0-9]{30,})' dist/ykt-helper-1216.user.js; then
+            echo 'Potential credential material detected in final userscript' >&2
+            exit 1
+          fi
+
+  browser-blackbox:
+    name: Chromium black-box behavior
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - name: Install locked project dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build final userscript
+        env:
+          BUILD_VERSION: independent-blackbox
+        run: npm run build
+      - name: Install isolated browser test dependency
+        run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.55.0
+      - name: Install Chromium runtime
+        run: npx playwright install --with-deps chromium
+      - name: Exercise freshly built userscript as a black box
+        env:
+          BLACKBOX_ARTIFACT: dist/ykt-helper-1216.user.js
+          BLACKBOX_EXPECTED_VERSION: 1.21.6
+        run: node test/blackbox/userscript-blackbox.mjs
+      - name: Exercise committed 1.21.6.5 field artifact as a black box
+        env:
+          BLACKBOX_ARTIFACT: ../release/ykt-helper-1216-full-regression-test.user.js
+          BLACKBOX_EXPECTED_VERSION: 1.21.6.5
+        run: node test/blackbox/userscript-blackbox.mjs
+
+  dependency-surface:
+    name: Dependency vulnerability surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - name: Install lockfile exactly
+        run: npm ci --no-audit --no-fund
+      - name: Fail on high or critical known vulnerabilities
+        run: npm audit --audit-level=high
