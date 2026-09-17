@@ -3,8 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
-const artifactPath = path.resolve(process.cwd(), 'dist/ykt-helper-1216.user.js');
-assert.ok(fs.existsSync(artifactPath), `missing built userscript: ${artifactPath}`);
+const artifactInput = process.env.BLACKBOX_ARTIFACT || 'dist/ykt-helper-1216.user.js';
+const expectedVersion = process.env.BLACKBOX_EXPECTED_VERSION || '1.21.6';
+const artifactPath = path.resolve(process.cwd(), artifactInput);
+assert.ok(fs.existsSync(artifactPath), `missing userscript artifact: ${artifactPath}`);
 
 const source = fs.readFileSync(artifactPath, 'utf8');
 
@@ -16,7 +18,7 @@ function metadataValues(key) {
 function assertArtifactContract() {
   assert.match(source, /^\s*\/\/ ==UserScript==/);
   assert.match(source, /\/\/ ==\/UserScript==/);
-  assert.deepEqual(metadataValues('version'), ['1.21.6']);
+  assert.deepEqual(metadataValues('version'), [expectedVersion]);
   assert.deepEqual(metadataValues('run-at'), ['document-start']);
 
   const grants = new Set(metadataValues('grant'));
@@ -92,7 +94,7 @@ const bootstrap = `
     return Promise.resolve(tabs);
   };
   window.GM_saveTab = () => Promise.resolve();
-  window.GM_info = { script: { version: '1.21.6' } };
+  window.GM_info = { script: { version: ${JSON.stringify(expectedVersion)} } };
 
   window.jspdf = { jsPDF: class jsPDF {} };
   window.MathJax = { typesetPromise: () => Promise.resolve() };
@@ -216,4 +218,4 @@ try {
   await browser.close();
 }
 
-console.log('Independent artifact black-box audit passed.');
+console.log(`Independent artifact black-box audit passed: ${artifactInput} (${expectedVersion}).`);
