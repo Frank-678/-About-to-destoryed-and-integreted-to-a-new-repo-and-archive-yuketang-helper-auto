@@ -1,5 +1,4 @@
 import { repo } from '../state/repo.js';
-import { actions } from '../state/actions.js';
 
 (function interceptFetch() {
   if (window.__YKT_FETCH_PATCHED__) return;
