@@ -35,6 +35,9 @@ export const meta = `
 // @grant        GM_addStyle
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // @grant        GM_openInTab
 // @grant        GM_getTab
 // @grant        GM_getTabs
