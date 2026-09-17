@@ -1,6 +1,6 @@
 name: Apply dependency security upgrade
 
-# One-shot remediation gate; retried after serializing contract test files.
+# One-shot remediation gate; serial contract runner + deterministic lockfile refresh.
 on:
   push:
     branches:
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   upgrade:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,14 +30,21 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: ykt-helper/package-lock.json
-      - name: Upgrade audited build dependencies without force
+          registry-url: 'https://registry.npmjs.org'
+      - name: Refresh audited build dependency lockfile without force
         working-directory: ykt-helper
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
         run: |
           set -euo pipefail
-          npm install --save-dev --save-exact rollup@4.63.3 @rollup/plugin-terser@1.0.0 --no-audit --no-fund
-          npm update picomatch serialize-javascript --no-audit --no-fund
+          npm install --package-lock-only --ignore-scripts --save-dev --save-exact rollup@4.63.3 @rollup/plugin-terser@1.0.0 --no-audit --no-fund
+          npm update --package-lock-only --ignore-scripts picomatch serialize-javascript --no-audit --no-fund
+          rm -rf node_modules
+          npm ci --ignore-scripts --no-audit --no-fund
       - name: Require no high-severity advisories
         working-directory: ykt-helper
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
         run: npm audit --audit-level=high
       - name: Run complete regression and build contracts
         working-directory: ykt-helper
