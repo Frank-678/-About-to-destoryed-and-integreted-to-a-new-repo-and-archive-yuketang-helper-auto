@@ -11,6 +11,8 @@ export const PROBLEM_TYPE_MAP = {
 
 export const DEFAULT_CONFIG = {
   ...REMINDER_DEFAULTS,
+  autoJoinEnabled: false,
+  autoAnswerOnAutoJoin: true,
   autoAnswer: false,
   autoForceRetry: false,
   autoAnswerDelay: 3000,
@@ -26,6 +28,8 @@ export const DEFAULT_CONFIG = {
   verifyAnswerProfileId: '',
   answerVerification: false,
   answerVerificationDelay: 0,
+  aiAutoAnalyze: false,
+  aiSlidePickPriority: true,
   autoFollowDanmu: false,
   keepScreenAwake: false,
   iftex: true,
