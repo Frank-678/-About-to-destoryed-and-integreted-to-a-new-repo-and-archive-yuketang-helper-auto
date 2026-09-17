@@ -11,6 +11,7 @@ const browser = installBrowserGlobals({
       autoRecoverExpired: true,
       ai: {
         model: 'custom-model',
+        kimiApiKey: 'new-inline-key',
         profiles: [{
           id: 'new',
           name: 'New',
@@ -53,12 +54,15 @@ test('ui runtime config preserves the normalized storage contract before setting
 
   assert.equal(ui.config.ai.activeProfileId, normalized.ai.activeProfileId);
   assert.equal(ui.config.ai.profiles[0].apiKey, 'new-key');
+  assert.equal(ui.config.ai.kimiApiKey, normalized.ai.kimiApiKey);
+  assert.equal(ui.config.ai.kimiApiKey, 'new-inline-key');
   assert.equal(ui.config.ai.model, 'custom-model');
   assert.equal(ui.config.autoAnswer, true);
   assert.equal(ui.config.autoRecoverExpired, true);
 });
 
-test('legacy standalone key cannot replace an explicitly configured active profile key', () => {
+test('legacy standalone key cannot replace explicit modern AI credentials', () => {
   assert.equal(ui.config.ai.profiles[0].apiKey, 'new-key');
+  assert.equal(ui.config.ai.kimiApiKey, 'new-inline-key');
   assert.equal(ui.config.ai.activeProfileId, 'new');
 });
