@@ -2,6 +2,8 @@ import { ui } from '../ui/ui-api.js';
 import { repo } from '../state/repo.js';
 import { chooseAnswerRoute } from './answer-routing.js';
 
+const ANSWER_REQUEST_TIMEOUT_MS = 15000;
+
 function sleep(ms) { return new Promise(r => setTimeout(r, Math.max(0, ms|0))); }
 function calcAutoWaitMs() {
   const base = Math.max(0, (ui?.config?.autoAnswerDelay ?? 0));
@@ -25,6 +27,7 @@ const DEFAULT_HEADERS = () => ({
 
 /**
  * Low-level POST helper using XMLHttpRequest to align with site requirements.
+ * Every mutating request is bounded so UI/action locks cannot remain pending forever.
  * @param {string} url
  * @param {object} data
  * @param {Record<string,string>} headers
@@ -35,6 +38,7 @@ function xhrPost(url, data, headers) {
     try {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url);
+      xhr.timeout = ANSWER_REQUEST_TIMEOUT_MS;
       for (const [k, v] of Object.entries(headers || {})) xhr.setRequestHeader(k, v);
       xhr.onload = () => {
         const status = Number(xhr.status);
@@ -54,6 +58,7 @@ function xhrPost(url, data, headers) {
         }
       };
       xhr.onerror = () => reject(new Error('网络请求失败'));
+      xhr.ontimeout = () => reject(new Error(`网络请求超时（${ANSWER_REQUEST_TIMEOUT_MS}ms）`));
       xhr.send(JSON.stringify(data));
     } catch (e) {
       reject(e);
