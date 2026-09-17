@@ -108,7 +108,9 @@ export async function retryAnswer(problem, result, dt, options = {}) {
     throw new Error(`${resp.msg} (${resp.code})`);
   }
   const okList = resp?.data?.success || [];
-  if (!Array.isArray(okList) || !okList.includes(problem.problemId)) {
+  const targetId = String(problem.problemId);
+  const confirmed = Array.isArray(okList) && okList.some(id => String(id) === targetId);
+  if (!confirmed) {
     throw new Error('服务器未返回成功信息');
   }
   return resp;
