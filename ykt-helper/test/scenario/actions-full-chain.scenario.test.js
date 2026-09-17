@@ -102,6 +102,9 @@ function addQuestion({ id = 'q1', slideId = 's1', result = null } = {}) {
       { key: 'B', value: '5' },
     ],
     result,
+    slideId,
+    presentationId: 'p1',
+    lessonId: 'lesson-1',
   };
   const slide = {
     id: slideId,
