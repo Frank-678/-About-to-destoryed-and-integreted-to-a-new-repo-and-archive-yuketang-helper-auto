@@ -80,12 +80,20 @@ MyWebSocket.addHandler((ws, url) => {
 
     const routeLessonId = lessonIdFromPath((gm.uw || window)?.location?.pathname || location.pathname);
     if (routeLessonId && !pendingManagedLessonId) {
+      const previousSocket = repo.lessonSockets.get(routeLessonId) || null;
       ws.__yktLessonId = routeLessonId;
       repo.markLessonConnected(routeLessonId, ws);
+      repo.markLessonAutoJoined(routeLessonId, false);
+
+      // A foreground/native classroom connection owns the lesson once the user
+      // actually enters it. Retire only the superseded managed AutoJoin socket;
+      // never close another native socket here.
+      if (previousSocket && previousSocket !== ws && previousSocket.__yktManaged === true) {
+        try { previousSocket.close?.(); } catch {}
+      }
+
       const clearNativeSocket = () => {
-        if (repo.lessonSockets.get(routeLessonId) === ws) {
-          repo.markLessonDisconnected(routeLessonId, 'native-close');
-        }
+        repo.markLessonDisconnected(routeLessonId, 'native-close', ws);
       };
       ws.addEventListener('close', clearNativeSocket);
       ws.addEventListener('error', clearNativeSocket);
@@ -183,6 +191,7 @@ export function connectOrAttachLessonWS({ lessonId, auth }) {
     pendingManagedLessonId = null;
   }
   ws.__yktLessonId = String(lessonId);
+  ws.__yktManaged = true;
 
   ws.addEventListener('open', () => {
     try {
@@ -209,7 +218,7 @@ export function connectOrAttachLessonWS({ lessonId, auth }) {
   const cleanup = (reason) => {
     if (cleaned) return;
     cleaned = true;
-    repo.markLessonDisconnected(lessonId, reason);
+    repo.markLessonDisconnected(lessonId, reason, ws);
   };
   ws.addEventListener('close', () => {
     cleanup('close');
