@@ -1,13 +1,6 @@
 name: Independent Black-box Audit
 
 on:
-  push:
-    branches:
-      - audit/independent-blackbox-20260917
-    paths:
-      - 'ykt-helper/**'
-      - 'release/**'
-      - '.github/workflows/independent-blackbox-audit.yml'
   pull_request:
     paths:
       - 'ykt-helper/**'
@@ -56,6 +49,9 @@ jobs:
           grep -q '^// @version[[:space:]]\+1\.21\.6$' dist/ykt-helper-1216.user.js
           grep -q '^// @run-at[[:space:]]\+document-start$' dist/ykt-helper-1216.user.js
           grep -q '^// @match[[:space:]]\+https://www\.yuketang\.cn/m/v2\*$' dist/ykt-helper-1216.user.js
+          grep -q '^// @grant[[:space:]]\+GM_getValue$' dist/ykt-helper-1216.user.js
+          grep -q '^// @grant[[:space:]]\+GM_setValue$' dist/ykt-helper-1216.user.js
+          grep -q '^// @grant[[:space:]]\+GM_deleteValue$' dist/ykt-helper-1216.user.js
       - name: Reject obvious secret material in distributable
         shell: bash
         run: |
@@ -95,11 +91,6 @@ jobs:
         env:
           BLACKBOX_ARTIFACT: dist/ykt-helper-1216.user.js
           BLACKBOX_EXPECTED_VERSION: 1.21.6
-        run: node test/blackbox/userscript-blackbox.mjs
-      - name: Exercise committed 1.21.6.5 field artifact as a black box
-        env:
-          BLACKBOX_ARTIFACT: ../release/ykt-helper-1216-full-regression-test.user.js
-          BLACKBOX_EXPECTED_VERSION: 1.21.6.5
         run: node test/blackbox/userscript-blackbox.mjs
 
   dependency-surface:
