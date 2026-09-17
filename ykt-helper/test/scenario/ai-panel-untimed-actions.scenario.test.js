@@ -149,7 +149,7 @@ async function prepareContext(deadline) {
   gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] }, 200);
   gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] }, 200);
   await askAIFusionMode();
-  assert.equal(document.getElementById('ykt-ai-answer-edit').value, '["A"]');
+  assert.deepEqual(JSON.parse(document.getElementById('ykt-ai-answer-edit').value), ['A']);
 }
 
 const untimedValues = [null, undefined, ''];
