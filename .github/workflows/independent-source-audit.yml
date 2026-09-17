@@ -1,12 +1,6 @@
 name: Independent Source Audit
 
 on:
-  push:
-    branches:
-      - audit/independent-blackbox-20260917
-    paths:
-      - 'ykt-helper/**'
-      - '.github/workflows/independent-source-audit.yml'
   pull_request:
     paths:
       - 'ykt-helper/**'
