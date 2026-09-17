@@ -33,7 +33,7 @@ class NativeXMLHttpRequest {
   send() {}
 }
 
-test('first userscript execution arms WS/XHR interception without a forced reload', async () => {
+test('first load arms network hooks once, never force-reloads, and periodic refresh skips lesson pages', async () => {
   const { window, document } = installBrowserGlobals({
     href: 'https://changjiang.yuketang.cn/v2/web/index',
   });
@@ -62,6 +62,16 @@ test('first userscript execution arms WS/XHR interception without a forced reloa
     assert.equal(reloadCount, 0, 'runtime activation must not require a forced second page load');
     assert.equal(intervals.length, 1, 'periodic reload base service should be installed exactly once');
     assert.equal(intervals[0].ms, 60_000);
+
+    // Non-lesson pages are allowed to refresh on the periodic tick.
+    window.location.pathname = '/v2/web/index';
+    intervals[0].fn();
+    assert.equal(reloadCount, 1, 'non-lesson page should refresh on the periodic tick');
+
+    // The same base service must never interrupt an active lesson page.
+    window.location.pathname = '/lesson/fullscreen/v3/lesson-123';
+    intervals[0].fn();
+    assert.equal(reloadCount, 1, 'lesson page must be excluded from periodic refresh');
   } finally {
     uninstallBrowserGlobals();
     delete globalThis.WebSocket;
