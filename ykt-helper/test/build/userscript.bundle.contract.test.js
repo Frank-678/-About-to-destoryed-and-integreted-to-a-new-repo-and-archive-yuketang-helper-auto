@@ -17,6 +17,13 @@ test('build output is a single userscript file with metadata header', () => {
   assert.match(text, /@run-at\s+document-start/);
 });
 
+test('metadata grants private userscript storage for AI credentials', () => {
+  const text = bundle();
+  assert.match(text, /@grant\s+GM_getValue/);
+  assert.match(text, /@grant\s+GM_setValue/);
+  assert.match(text, /@grant\s+GM_deleteValue/);
+});
+
 test('metadata covers desktop root, web, mobile and lesson entries for all supported domains', () => {
   const text = bundle();
   for (const domain of ['www.yuketang.cn', 'pro.yuketang.cn', 'changjiang.yuketang.cn']) {
