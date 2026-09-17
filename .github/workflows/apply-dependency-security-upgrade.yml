@@ -1,5 +1,6 @@
 name: Apply dependency security upgrade
 
+# One-shot remediation gate; retried after serializing contract test files.
 on:
   push:
     branches:
