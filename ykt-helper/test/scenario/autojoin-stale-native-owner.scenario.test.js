@@ -95,9 +95,8 @@ test('AutoJoin stale-lesson pruning never disconnects a foreground native socket
   try {
     actions.startAutoJoinLoop();
     assert.equal(await waitFor(() => fetchCalls.some(url => url.includes('/classroom/on-lesson')), 250), true);
-    // Let the async first loop finish its snapshot/removal processing.
-    await Promise.resolve();
-    await Promise.resolve();
+    assert.equal(await waitFor(() => !repo.activeLessons.has(lessonId), 500), true,
+      'the first AutoJoin sync must finish processing the removed lesson before assertions run');
 
     assert.equal(native.closeCalls, 0,
       'a lesson disappearing from the AutoJoin API must not close a foreground/native owner');
