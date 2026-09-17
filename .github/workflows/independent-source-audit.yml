@@ -40,7 +40,7 @@ jobs:
         run: npm run test:all
 
   syntax-and-import-graph:
-    name: Syntax and import graph
+    name: Syntax and circular import graph
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -58,6 +58,18 @@ jobs:
           while IFS= read -r -d '' file; do
             node --check "$file"
           done < <(find src -type f -name '*.js' -print0)
+      - name: Detect circular ESM imports independently
+        run: npx --yes madge@8.0.0 --circular --extensions js src/index.js
+
+  architecture-boundary:
+    name: Network/state architecture boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
       - name: Reject direct interceptor-to-actions coupling
         shell: bash
         run: |
@@ -66,8 +78,6 @@ jobs:
             echo 'Network interceptors must dispatch through runtime-dispatch, not import actions directly.' >&2
             exit 1
           fi
-      - name: Detect circular ESM imports independently
-        run: npx --yes madge@8.0.0 --circular --extensions js src/index.js
 
   source-security-smoke:
     name: Source security smoke checks
