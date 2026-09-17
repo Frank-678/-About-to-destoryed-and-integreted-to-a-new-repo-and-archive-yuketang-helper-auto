@@ -901,7 +901,13 @@ export const actions = {
 
         for (const staleLessonId of snapshot.removed) {
           const staleSocket = repo.lessonSockets.get(staleLessonId);
-          repo.markLessonDisconnected(staleLessonId, 'inactive');
+          if (staleSocket?.__yktManaged === false) {
+            // The AutoJoin API snapshot no longer owns this lesson. A foreground
+            // classroom still owns its native socket, so background pruning must
+            // not disconnect or close that connection.
+            continue;
+          }
+          repo.markLessonDisconnected(staleLessonId, 'inactive', staleSocket || null);
           try { staleSocket?.close?.(); } catch {}
         }
 
