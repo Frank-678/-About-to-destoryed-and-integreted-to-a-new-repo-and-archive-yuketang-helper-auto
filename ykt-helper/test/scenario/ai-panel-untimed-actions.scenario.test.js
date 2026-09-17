@@ -143,6 +143,10 @@ async function prepareContext(deadline) {
     autoAnswerTime: null,
     autoAnswerQueued: false,
   });
+  // The panel's vision client may take a structured-analysis first step and
+  // then fall back to the ordinary vision request. Supply both external
+  // responses so this test reaches the button/deadline behavior it targets.
+  gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] }, 200);
   gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] }, 200);
   await askAIFusionMode();
   assert.equal(document.getElementById('ykt-ai-answer-edit').value, '["A"]');
