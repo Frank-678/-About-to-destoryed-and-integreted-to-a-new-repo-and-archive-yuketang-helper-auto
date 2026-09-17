@@ -3,9 +3,12 @@ import { ui } from '../ui-api.js';
 import { repo } from '../../state/repo.js';
 import { actions } from '../../state/actions.js';
 import { submitAnswer } from '../../tsm/answer.js';
+import { createKeyedActionLock } from '../../core/action-lock.js';
+import { getFiniteDeadline, isProblemAnswered, isProblemExpired } from '../../core/problem-view-state.js';
 
 const L = (...a) => console.log('[雨课堂助手][DBG][problem-list]', ...a);
 const W = (...a) => console.warn('[雨课堂助手][WARN][problem-list]', ...a);
+const problemActionLock = createKeyedActionLock();
 
 function $(sel) { return document.querySelector(sel); }
 function create(tag, cls){ const n=document.createElement(tag); if(cls) n.className=cls; return n; }
@@ -162,6 +165,16 @@ function crossFindProblem(problemIdStr) {
   return null;
 }
 
+function acquireProblemAction(problemId) {
+  if (problemActionLock.acquire(problemId)) return true;
+  ui.toast('该题已有操作正在进行，请稍候');
+  return false;
+}
+
+function releaseProblemAction(problemId) {
+  problemActionLock.release(problemId);
+}
+
 // ========== 行渲染与交互 ==========
 function bindRowActions(row, e, prob){
   const actionsBar = row.querySelector('.problem-actions');
@@ -183,7 +196,6 @@ function bindRowActions(row, e, prob){
     const presId = e.presentationId || prob?.presentationId;
     const slideId = (e.slide?.id || e.slideId || prob?.slideId);
     if (slideId) {
-      // 派发“提问当前PPT”以便 AI 面板优先识别该页
       window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slide', {
         detail: {
           slideId: String(slideId),
@@ -198,10 +210,14 @@ function bindRowActions(row, e, prob){
   // AI 强制作答：直接分析并提交；过期题目需要二次确认后走补交接口
   const btnForceAI = create('button'); btnForceAI.textContent = 'AI强制作答';
   btnForceAI.onclick = async () => {
+    if (!acquireProblemAction(e.problemId)) return;
     const ps = repo.problemStatus?.get?.(e.problemId);
-    const end = Number(ps?.endTime ?? e.endTime ?? prob?.endTime);
-    const expired = Number.isFinite(end) && Date.now() >= end;
-    if (expired && !window.confirm('这道题已过截止时间，AI 将使用强制补交接口。继续吗？')) return;
+    const end = getFiniteDeadline(ps?.endTime, e.endTime, prob?.endTime);
+    const expired = isProblemExpired(Date.now(), end);
+    if (expired && !window.confirm('这道题已过截止时间，AI 将使用强制补交接口。继续吗？')) {
+      releaseProblemAction(e.problemId);
+      return;
+    }
 
     row.classList.add('loading');
     btnForceAI.disabled = true;
@@ -215,6 +231,7 @@ function bindRowActions(row, e, prob){
     } finally {
       btnForceAI.disabled = false;
       row.classList.remove('loading');
+      releaseProblemAction(e.problemId);
     }
   };
   actionsBar.appendChild(btnForceAI);
@@ -240,7 +257,6 @@ function bindRowActions(row, e, prob){
 }
 
 function updateRow(row, e, prob){
-   // 标题
   const title = row.querySelector('.problem-title');
   title.textContent = (prob?.body || e.body || prob?.title || `题目 ${e.problemId}`).slice(0, 120);
 
@@ -250,13 +266,16 @@ function updateRow(row, e, prob){
   const startTime = Number(
     status?.startTime ?? prob?.startTime ?? e.startTime ?? ps?.startTime ?? 0
   ) || undefined;
-  const endTime = Number(
-    status?.endTime   ?? prob?.endTime   ?? e.endTime   ?? ps?.endTime   ?? 0
-  ) || undefined;
+  const endTime = getFiniteDeadline(
+    status?.endTime,
+    prob?.endTime,
+    e.endTime,
+    ps?.endTime,
+  );
 
   // 元信息（含截止时间）
   const meta = row.querySelector('.problem-meta');
-  const answered = !!(prob?.result || status?.myAnswer || status?.answered);
+  const answered = isProblemAnswered(prob, status);
   meta.textContent =
     `PID: ${e.problemId} / 类型: ${e.problemType} / 状态: ${answered ? '已作答' : '未作答'} / 截止: ${endTime ? new Date(endTime).toLocaleString() : '未知'}`;
 
@@ -297,42 +316,41 @@ function updateRow(row, e, prob){
   // 正常提交（过期则提示是否补交）
   const btnSubmit = create('button'); btnSubmit.textContent = '提交';
   btnSubmit.onclick = async () => {
+    if (!acquireProblemAction(e.problemId)) return;
+    row.classList.add('loading');
+    btnSubmit.disabled = true;
     try{
       const result = JSON.parse(textarea.value || '[""]');
-      row.classList.add('loading');
-      const { route } = await submitAnswer(
-        { problemId: e.problemId, problemType: e.problemType },
-        result,
-        { startTime, endTime, autoGate: false, waitMs: 0 }
-      );
-      ui.toast(route==='answer' ? '提交成功' : '补交成功');
-      const merged = Object.assign({}, prob||{}, { result }, { status: { ...(prob?.status||{}), answered: true } });
-      repo.problems.set(e.problemId, merged);
-      updateRow(row, e, merged);
-    }catch(err){
-      if (err?.name === 'DeadlineError'){
-        ui.confirm('已过截止，是否执行补交？').then(async ok => {
-          if (!ok) return;
-          try{
-            const result = JSON.parse(textarea.value || '{}');
-            row.classList.add('loading');
-            await submitAnswer(
-              { problemId: e.problemId, problemType: e.problemType },
-              result,
-              { startTime, endTime, forceRetry: true, autoGate: false, waitMs: 0 }
-            );
-            ui.toast('补交成功');
-            const merged = Object.assign({}, prob||{}, { result }, { status: { ...(prob?.status||{}), answered: true } });
-            repo.problems.set(e.problemId, merged);
-            updateRow(row, e, merged);
-          }catch(e2){ ui.toast('补交失败：' + (e2?.message||e2)); }
-          finally{ row.classList.remove('loading'); }
-        });
-      }else{
-        ui.toast('提交失败：' + (err?.message || err));
+      try {
+        const { route } = await submitAnswer(
+          { problemId: e.problemId, problemType: e.problemType },
+          result,
+          { startTime, endTime, autoGate: false, waitMs: 0 }
+        );
+        ui.toast(route==='answer' ? '提交成功' : '补交成功');
+        const merged = Object.assign({}, prob||{}, { result }, { status: { ...(prob?.status||{}), answered: true } });
+        repo.problems.set(e.problemId, merged);
+        updateRow(row, e, merged);
+      } catch (err) {
+        if (err?.name !== 'DeadlineError') throw err;
+        const ok = await ui.confirm('已过截止，是否执行补交？');
+        if (!ok) return;
+        await submitAnswer(
+          { problemId: e.problemId, problemType: e.problemType },
+          result,
+          { startTime, endTime, forceRetry: true, autoGate: false, waitMs: 0 }
+        );
+        ui.toast('补交成功');
+        const merged = Object.assign({}, prob||{}, { result }, { status: { ...(prob?.status||{}), answered: true } });
+        repo.problems.set(e.problemId, merged);
+        updateRow(row, e, merged);
       }
+    }catch(err){
+      ui.toast('提交失败：' + (err?.message || err));
     }finally{
+      btnSubmit.disabled = false;
       row.classList.remove('loading');
+      releaseProblemAction(e.problemId);
     }
   };
   submitBar.appendChild(btnSubmit);
@@ -340,9 +358,11 @@ function updateRow(row, e, prob){
   // 强制补交
   const btnForceRetry = create('button'); btnForceRetry.textContent = '强制补交';
   btnForceRetry.onclick = async () => {
+    if (!acquireProblemAction(e.problemId)) return;
+    row.classList.add('loading');
+    btnForceRetry.disabled = true;
     try{
       const result = JSON.parse(textarea.value || '{}');
-      row.classList.add('loading');
       await submitAnswer(
         { problemId: e.problemId, problemType: e.problemType },
         result,
@@ -353,7 +373,11 @@ function updateRow(row, e, prob){
       repo.problems.set(e.problemId, merged);
       updateRow(row, e, merged);
     }catch(err){ ui.toast('补交失败：' + (err?.message || err)); }
-    finally{ row.classList.remove('loading'); }
+    finally{
+      btnForceRetry.disabled = false;
+      row.classList.remove('loading');
+      releaseProblemAction(e.problemId);
+    }
   };
   submitBar.appendChild(btnForceRetry);
 
