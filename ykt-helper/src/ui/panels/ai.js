@@ -7,6 +7,7 @@ import { parseAIAnswer } from '../../tsm/ai-format.js';
 import { actions, hasActiveAIProfile} from '../../state/actions.js'
 import { parseEditableAnswer, formatEditableAnswer } from '../../state/answer-editor.js';
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
+import { isProblemExpired } from '../../core/problem-view-state.js';
 
 const L = (...a) => console.log('[雨课堂助手][DBG][ai]', ...a);
 const W = (...a) => console.warn('[雨课堂助手][WARN][ai]', ...a);
@@ -216,7 +217,7 @@ function normalizeRepoSlidesKeys(tag = 'ai.mount') {
 function asIdStr(v) { return v == null ? null : String(v); }
 function isMainPriority() {
   const v = ui?.config?.aiSlidePickPriority;
-  const ret = !(v === 'presentation');
+  const ret = v !== false && v !== 'presentation';
   L('isMainPriority?', { cfg: v, result: ret });
   return ret;
 }
@@ -432,8 +433,7 @@ async function submitEditedAnswer() {
   }
 
   const status = currentProblemStatus(problem);
-  const endTime = Number(status?.endTime ?? problem.endTime);
-  const expired = Number.isFinite(endTime) && Date.now() >= endTime;
+  const expired = isProblemExpired(Date.now(), status?.endTime, problem.endTime);
   if (expired && !window.confirm('这道题已过截止时间，将使用强制补交接口。继续吗？')) return;
 
   const button = $('#ykt-ai-submit');
@@ -468,8 +468,7 @@ async function forceAIAnswerForCurrent() {
     return;
   }
   const status = currentProblemStatus(problem);
-  const endTime = Number(status?.endTime ?? problem.endTime);
-  const expired = Number.isFinite(endTime) && Date.now() >= endTime;
+  const expired = isProblemExpired(Date.now(), status?.endTime, problem.endTime);
   if (expired && !window.confirm('这道题已过截止时间，AI 将使用强制补交接口。继续吗？')) return;
 
   const button = $('#ykt-ai-force-answer');
