@@ -123,8 +123,17 @@ export const repo = {
 
   markLessonAutoJoined(lessonId, enabled = true) {
     const key = String(lessonId || '').trim();
-    if (!key) return;
-    if (enabled) this.autoJoinedLessons.add(key);
-    else this.autoJoinedLessons.delete(key);
+    if (!key) return false;
+    if (enabled) {
+      const socket = this.lessonSockets.get(key) || null;
+      // Foreground/native sockets explicitly opt out of AutoJoin ownership.
+      // Undefined keeps compatibility with legacy/plain test doubles while the
+      // managed WS path marks its socket with __yktManaged === true.
+      if (socket?.__yktManaged === false) return false;
+      this.autoJoinedLessons.add(key);
+      return true;
+    }
+    this.autoJoinedLessons.delete(key);
+    return true;
   },
 };
