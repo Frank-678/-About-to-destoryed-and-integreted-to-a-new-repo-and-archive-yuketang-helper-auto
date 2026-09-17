@@ -6,6 +6,7 @@ on:
       - audit/full-regression-20260917
     paths:
       - .github/workflows/apply-final-consolidation.yml
+      - .github/scripts/apply-final-consolidation.py
 
 permissions:
   contents: write
@@ -72,5 +73,5 @@ jobs:
             echo "No product changes to commit"
             exit 0
           fi
-          git commit -m "refactor: unify runtime UI context and answer semantics"
+          git commit -m "refactor: unify runtime dispatch and answer semantics"
           git push origin HEAD:audit/full-regression-20260917
