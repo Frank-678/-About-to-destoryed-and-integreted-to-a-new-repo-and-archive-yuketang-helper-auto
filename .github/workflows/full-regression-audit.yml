@@ -1,9 +1,11 @@
-name: Full Regression Audit
+name: Full Regression
 
 on:
   push:
-    branches:
-      - audit/full-regression-20260917
+    paths:
+      - 'ykt-helper/**'
+      - '.github/workflows/full-regression-audit.yml'
+  pull_request:
     paths:
       - 'ykt-helper/**'
       - '.github/workflows/full-regression-audit.yml'
@@ -121,5 +123,13 @@ jobs:
             npm cache verify || true
             npm ci --no-audit --no-fund
           }
-      - run: npm run build
+      - name: Build without circular dependency warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/ykt-build.log
+          if grep -q 'Circular dependencies' /tmp/ykt-build.log; then
+            echo 'Rollup reported circular dependencies' >&2
+            exit 1
+          fi
       - run: npm run test:build
