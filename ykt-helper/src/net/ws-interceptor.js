@@ -82,6 +82,7 @@ MyWebSocket.addHandler((ws, url) => {
     if (routeLessonId && !pendingManagedLessonId) {
       const previousSocket = repo.lessonSockets.get(routeLessonId) || null;
       ws.__yktLessonId = routeLessonId;
+      ws.__yktManaged = false;
       repo.markLessonConnected(routeLessonId, ws);
       repo.markLessonAutoJoined(routeLessonId, false);
 
