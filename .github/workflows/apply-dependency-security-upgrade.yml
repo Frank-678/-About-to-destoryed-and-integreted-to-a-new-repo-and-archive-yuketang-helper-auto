@@ -1,0 +1,63 @@
+name: Apply dependency security upgrade
+
+on:
+  push:
+    branches:
+      - fix/independent-audit-remediation-20260917
+    paths:
+      - '.github/workflows/apply-dependency-security-upgrade.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependency-security-upgrade
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/independent-audit-remediation-20260917
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - name: Upgrade audited build dependencies without force
+        working-directory: ykt-helper
+        run: |
+          set -euo pipefail
+          npm install --save-dev --save-exact rollup@4.63.3 @rollup/plugin-terser@1.0.0 --no-audit --no-fund
+          npm update picomatch serialize-javascript --no-audit --no-fund
+      - name: Require no high-severity advisories
+        working-directory: ykt-helper
+        run: npm audit --audit-level=high
+      - name: Run complete regression and build contracts
+        working-directory: ykt-helper
+        run: |
+          npm run test:all
+          npm run build
+          npm run test:build
+      - name: Verify resolved dependency versions
+        working-directory: ykt-helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ls rollup @rollup/plugin-terser picomatch serialize-javascript
+      - name: Commit verified dependency update only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- . ':(exclude)ykt-helper/package.json' ':(exclude)ykt-helper/package-lock.json'
+          git add ykt-helper/package.json ykt-helper/package-lock.json
+          git diff --cached --quiet && exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: upgrade audited Rollup dependencies'
+          git push origin HEAD:fix/independent-audit-remediation-20260917
