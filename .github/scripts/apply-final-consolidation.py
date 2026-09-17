@@ -3,11 +3,16 @@ from pathlib import Path
 ROOT = Path('ykt-helper/src')
 
 
-def require_once(text: str, needle: str, label: str) -> str:
+def require_count(text: str, needle: str, expected: int, label: str) -> str:
     count = text.count(needle)
-    if count != 1:
-        raise SystemExit(f'{label}: expected exactly 1 match, got {count}')
+    if count != expected:
+        raise SystemExit(f'{label}: expected {expected} matches, got {count}')
     return text
+
+
+def replace_exact(text: str, old: str, new: str, expected: int, label: str) -> str:
+    require_count(text, old, expected, label)
+    return text.replace(old, new)
 
 
 # 1) Make ui-api a one-way aggregator over the stable low-level UI context.
@@ -18,8 +23,7 @@ for old, new, label in [
     ("import { toast } from './toast.js';\n", "import { ui } from './ui-context.js';\n", 'replace ui-api toast import'),
     ("import { PROBLEM_TYPE_MAP } from '../core/types.js'\n", '', 'remove ui-api type import'),
 ]:
-    require_once(text, old, label)
-    text = text.replace(old, new)
+    text = replace_exact(text, old, new, 1, label)
 
 old_init = """const _config = storage.get('config', {});
 _config.TYPE_MAP = _config.TYPE_MAP || PROBLEM_TYPE_MAP;
@@ -38,22 +42,15 @@ function saveConfig() {
 }
 
 """
-require_once(text, old_init, 'ui-api init block')
-text = text.replace(old_init, '')
+text = replace_exact(text, old_init, '', 1, 'ui-api init block')
 old_decl = """export const ui = {
   get config() { return _config; },
   saveConfig,
 
 """
-require_once(text, old_decl, 'ui-api declaration')
-text = text.replace(old_decl, 'Object.assign(ui, {\n')
-
-toast_property = '  toast,\n'
-require_once(text, toast_property, 'ui-api toast property')
-text = text.replace(toast_property, '')
-config_use = '_config.autoAnswer'
-require_once(text, config_use, 'ui-api _config use')
-text = text.replace(config_use, 'this.config.autoAnswer')
+text = replace_exact(text, old_decl, 'Object.assign(ui, {\n', 1, 'ui-api declaration')
+text = replace_exact(text, '  toast,\n', '', 1, 'ui-api toast property')
+text = replace_exact(text, '_config.autoAnswer', 'this.config.autoAnswer', 1, 'ui-api _config use')
 if not text.rstrip().endswith('};'):
     raise SystemExit('ui-api does not end with expected object literal terminator')
 text = text.rstrip()[:-2] + '});\n\nexport { ui };\n'
@@ -83,8 +80,7 @@ extra_imports = (
     "import { shouldAutoAnswerForLesson as evaluateAutoAnswerPolicy } from '../core/auto-answer-policy.js';\n"
     "import { registerRuntimeActions } from '../core/runtime-dispatch.js';\n"
 )
-require_once(text, anchor, 'actions import anchor')
-text = text.replace(anchor, anchor + extra_imports)
+text = replace_exact(text, anchor, anchor + extra_imports, 1, 'actions import anchor')
 old_policy = """function shouldAutoAnswerForLesson(lessonId) {
   if (ui?.config?.autoAnswer === true) return true;
   const key = String(lessonId || '').trim();
@@ -103,12 +99,14 @@ new_policy = """function shouldAutoAnswerForLesson(lessonId) {
   });
 }
 """
-require_once(text, old_policy, 'actions local policy block')
-text = text.replace(old_policy, new_policy)
-old_result = '  if (status.done || problem?.result) {\n'
-new_result = '  if (status.done || hasSubmittedAnswer(problem?.result)) {\n'
-require_once(text, old_result, 'actions recovery result check')
-text = text.replace(old_result, new_result)
+text = replace_exact(text, old_policy, new_policy, 1, 'actions local policy block')
+text = replace_exact(
+    text,
+    '  if (status.done || problem?.result) {\n',
+    '  if (status.done || hasSubmittedAnswer(problem?.result)) {\n',
+    1,
+    'actions recovery result check',
+)
 if not text.rstrip().endswith('};'):
     raise SystemExit('actions does not end with expected exported object terminator')
 text = text.rstrip() + '\n\nregisterRuntimeActions(actions);\n'
@@ -118,24 +116,46 @@ actions.write_text(text, encoding='utf-8')
 #    importing actions back, breaking the two remaining net <-> state cycles.
 xhr = ROOT / 'net' / 'xhr-interceptor.js'
 text = xhr.read_text(encoding='utf-8-sig')
-old = "import { actions } from '../state/actions.js';\n"
-new = "import { runtimeActionRef } from '../core/runtime-dispatch.js';\n"
-require_once(text, old, 'xhr actions import')
-text = text.replace(old, new)
-if text.count('actions.') != 3:
-    raise SystemExit(f'xhr actions calls: expected 3, got {text.count("actions.")}')
-text = text.replace('actions.', 'runtimeActionRef.current?.')
+text = replace_exact(
+    text,
+    "import { actions } from '../state/actions.js';\n",
+    "import { runtimeActionRef } from '../core/runtime-dispatch.js';\n",
+    1,
+    'xhr actions import',
+)
+text = replace_exact(
+    text,
+    'actions.onPresentationLoaded(',
+    'runtimeActionRef.current?.onPresentationLoaded(',
+    1,
+    'xhr presentation dispatch',
+)
+text = replace_exact(
+    text,
+    'actions.onAnswerProblem(',
+    'runtimeActionRef.current?.onAnswerProblem(',
+    2,
+    'xhr answer dispatch',
+)
 xhr.write_text(text, encoding='utf-8')
 
 ws = ROOT / 'net' / 'ws-interceptor.js'
 text = ws.read_text(encoding='utf-8-sig')
-old = "import { actions } from '../state/actions.js';\n"
-new = "import { runtimeActionRef } from '../core/runtime-dispatch.js';\n"
-require_once(text, old, 'ws actions import')
-expected_ws_calls = text.count('actions.')
-if expected_ws_calls != 6:
-    raise SystemExit(f'ws actions calls: expected 6, got {expected_ws_calls}')
-text = text.replace('actions.', 'runtimeActionRef.current?.')
+text = replace_exact(
+    text,
+    "import { actions } from '../state/actions.js';\n",
+    "import { runtimeActionRef } from '../core/runtime-dispatch.js';\n",
+    1,
+    'ws actions import',
+)
+for old, new, label in [
+    ('actions.onFetchTimeline(', 'runtimeActionRef.current?.onFetchTimeline(', 'ws timeline dispatch'),
+    ('actions.onUnlockProblem(', 'runtimeActionRef.current?.onUnlockProblem(', 'ws unlock dispatch'),
+    ('actions.onDanmu(', 'runtimeActionRef.current?.onDanmu(', 'ws danmu dispatch'),
+    ('actions.onPublishEvent(', 'runtimeActionRef.current?.onPublishEvent(', 'ws publish dispatch'),
+    ('actions.onLessonFinished(', 'runtimeActionRef.current?.onLessonFinished(', 'ws finish dispatch'),
+]:
+    text = replace_exact(text, old, new, 1, label)
 ws.write_text(text, encoding='utf-8')
 
 print('final consolidation patch applied')
