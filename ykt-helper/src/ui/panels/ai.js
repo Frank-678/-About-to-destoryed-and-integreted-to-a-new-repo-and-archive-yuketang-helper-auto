@@ -9,6 +9,7 @@ import { parseEditableAnswer, formatEditableAnswer } from '../../state/answer-ed
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 import { isProblemExpired } from '../../core/problem-view-state.js';
 import { onInternalEvent } from '../../core/internal-events.js';
+import { trustedUiHandler } from '../../core/trusted-ui-event.js';
 
 const L = (...a) => console.log('[雨课堂助手][DBG][ai]', ...a);
 const W = (...a) => console.warn('[雨课堂助手][WARN][ai]', ...a);
@@ -261,9 +262,9 @@ export function mountAIPanel() {
   root = document.getElementById('ykt-ai-answer-panel');
 
   $('#ykt-ai-close')?.addEventListener('click', () => showAIPanel(false));
-  $('#ykt-ai-ask')?.addEventListener('click', askAIFusionMode);
-  $('#ykt-ai-force-answer')?.addEventListener('click', forceAIAnswerForCurrent);
-  $('#ykt-ai-submit')?.addEventListener('click', submitEditedAnswer);
+  $('#ykt-ai-ask')?.addEventListener('click', trustedUiHandler(askAIFusionMode));
+  $('#ykt-ai-force-answer')?.addEventListener('click', trustedUiHandler(forceAIAnswerForCurrent));
+  $('#ykt-ai-submit')?.addEventListener('click', trustedUiHandler(submitEditedAnswer));
   $('#ykt-ai-reset-edit')?.addEventListener('click', () => {
     if (lastAnswerContext?.parsed !== undefined) setEditableAnswer(lastAnswerContext.parsed);
   });
