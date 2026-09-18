@@ -82,13 +82,16 @@ export function mountSettingsPanel() {
   const $profileName = root.querySelector('#ykt-ai-profile-name');
   const $baseUrl = root.querySelector('#ykt-ai-base-url');
   const $api = root.querySelector('#kimi-api-key');
+  const $apiClear = root.querySelector('#ykt-ai-api-key-clear');
   const $model = root.querySelector('#ykt-ai-model');
   const $visionModel = root.querySelector('#ykt-ai-vision-model');
   const $temperature = root.querySelector('#ykt-ai-temperature');
   const $ocrApi = root.querySelector('#ykt-ai-ocr-api');
   const $ocrApiKey = root.querySelector('#ykt-ai-ocr-api-key');
+  const $ocrApiKeyClear = root.querySelector('#ykt-ai-ocr-api-key-clear');
   const $translateApi = root.querySelector('#ykt-ai-translate-api');
   const $translateApiKey = root.querySelector('#ykt-ai-translate-api-key');
+  const $translateApiKeyClear = root.querySelector('#ykt-ai-translate-api-key-clear');
   const $translateModel = root.querySelector('#ykt-ai-translate-model');
 
   // === 其他 UI 原有字段 ===
@@ -153,6 +156,29 @@ export function mountSettingsPanel() {
     notifySound: $notifySound,
   };
 
+  function syncSecretField(input, hasStoredSecret, emptyPlaceholder) {
+    if (!input) return;
+    input.value = '';
+    input.dataset.clearSecret = 'false';
+    input.placeholder = hasStoredSecret
+      ? '已安全保存；留空保持不变'
+      : emptyPlaceholder;
+  }
+
+  function readSecretField(input, existingValue = '') {
+    if (!input) return String(existingValue || '');
+    if (input.dataset.clearSecret === 'true') return '';
+    const entered = String(input.value || '').trim();
+    return entered || String(existingValue || '');
+  }
+
+  function armSecretClear(input) {
+    if (!input) return;
+    input.value = '';
+    input.dataset.clearSecret = 'true';
+    input.placeholder = '保存设置后将清除此 Key';
+  }
+
   // Profile UI
   function refreshProfileSelect() {
     const ai = ui.config.ai;
@@ -198,14 +224,14 @@ export function mountSettingsPanel() {
 
     $profileName.value = p.name || '';
     $baseUrl.value = p.baseUrl || '';
-    $api.value = p.apiKey || '';
+    syncSecretField($api, !!p.apiKey, '输入当前配置的 API Key');
     $model.value = p.model || '';
     $visionModel.value = p.visionModel || '';
     $temperature.value = p.temperature ?? '';
     $ocrApi.value = ui.config.ai.ocrApi || '';
-    $ocrApiKey.value = ui.config.ai.ocrApiKey || '';
+    syncSecretField($ocrApiKey, !!ui.config.ai.ocrApiKey, '留空则复用当前 AI Profile 的 API Key');
     $translateApi.value = ui.config.ai.translateApi || '';
-    $translateApiKey.value = ui.config.ai.translateApiKey || '';
+    syncSecretField($translateApiKey, !!ui.config.ai.translateApiKey, '留空则复用当前 AI Profile 的 API Key');
     $translateModel.value = ui.config.ai.translateModel || '';
   }
 
@@ -254,6 +280,10 @@ export function mountSettingsPanel() {
     refreshAnswerProfileSelects();
     loadProfileToForm(ai.activeProfileId);
   }));
+
+  $apiClear?.addEventListener('click', trustedUiHandler(() => armSecretClear($api)));
+  $ocrApiKeyClear?.addEventListener('click', trustedUiHandler(() => armSecretClear($ocrApiKey)));
+  $translateApiKeyClear?.addEventListener('click', trustedUiHandler(() => armSecretClear($translateApiKey)));
 
   function syncFormFromConfig() {
     ensureAIProfiles(ui.config.ai || (ui.config.ai = {}));
@@ -317,7 +347,7 @@ export function mountSettingsPanel() {
     const profileResult = applyProfileForm(p, {
       name: $profileName.value,
       baseUrl: $baseUrl.value,
-      apiKey: $api.value,
+      apiKey: readSecretField($api, p.apiKey),
       model: $model.value,
       visionModel: $visionModel.value,
       temperature: $temperature.value,
@@ -328,9 +358,9 @@ export function mountSettingsPanel() {
     }
 
     ai.ocrApi = $ocrApi.value.trim();
-    ai.ocrApiKey = $ocrApiKey.value.trim();
+    ai.ocrApiKey = readSecretField($ocrApiKey, ai.ocrApiKey);
     ai.translateApi = $translateApi.value.trim();
-    ai.translateApiKey = $translateApiKey.value.trim();
+    ai.translateApiKey = readSecretField($translateApiKey, ai.translateApiKey);
     ai.translateModel = $translateModel.value.trim();
     const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
     if (curOpt) curOpt.textContent = p.name || p.id;
@@ -362,6 +392,9 @@ export function mountSettingsPanel() {
     ui.config.keepScreenAwake = !!$keepScreenAwake.checked;
 
     ui.saveConfig();
+    syncSecretField($api, !!p.apiKey, '输入当前配置的 API Key');
+    syncSecretField($ocrApiKey, !!ai.ocrApiKey, '留空则复用当前 AI Profile 的 API Key');
+    syncSecretField($translateApiKey, !!ai.translateApiKey, '留空则复用当前 AI Profile 的 API Key');
     document.getElementById('ykt-btn-bell')?.classList.toggle('active', ui.config.notifyProblems);
     ui.updateAutoAnswerBtn();
     const wakeLockStatus = await screenWakeLock.setEnabled(ui.config.keepScreenAwake);
