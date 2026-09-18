@@ -227,19 +227,29 @@ export class StorageManager {
   }
 
   set(key, value) {
-    if (key === 'config' && this._privateAvailable()) {
-      const secrets = extractSecrets(value);
-      if (!this._writePrivateSecrets(secrets)) throw new Error('private secret storage unavailable');
-      this._persistSanitizedConfig(value);
-      return;
+    if (key === 'config') {
+      if (this._privateAvailable()) {
+        const secrets = extractSecrets(value);
+        if (!this._writePrivateSecrets(secrets)) throw new Error('private secret storage unavailable');
+        this._persistSanitizedConfig(value);
+        return;
+      }
+      if (hasSecretMaterial(value)) {
+        throw new Error('private secret storage unavailable; refusing to persist credentials to localStorage');
+      }
     }
 
-    if (key === 'kimiApiKey' && this._privateAvailable()) {
-      const current = this._readPrivateSecrets() || extractSecrets({});
-      current.legacyKimiApiKey = String(value || '');
-      if (!this._writePrivateSecrets(current)) throw new Error('private secret storage unavailable');
-      this._removeLocalLegacyKey();
-      return;
+    if (key === 'kimiApiKey') {
+      if (this._privateAvailable()) {
+        const current = this._readPrivateSecrets() || extractSecrets({});
+        current.legacyKimiApiKey = String(value || '');
+        if (!this._writePrivateSecrets(current)) throw new Error('private secret storage unavailable');
+        this._removeLocalLegacyKey();
+        return;
+      }
+      if (String(value || '')) {
+        throw new Error('private secret storage unavailable; refusing to persist credentials to localStorage');
+      }
     }
 
     localStorage.setItem(this.prefix + key, JSON.stringify(value));
