@@ -6,6 +6,8 @@ on:
       - fix/independent-audit-remediation-20260917
     paths:
       - '.github/workflows/final-independent-remediation-audit.yml'
+      - 'ykt-helper/**'
+      - 'release/**'
 
 permissions:
   contents: read
