@@ -1,9 +1,11 @@
 import { repo } from '../state/repo.js';
 import { isYuketangUrl } from '../core/yuketang-origin.js';
 
+let fetchInterceptorInstalled = false;
+
 (function interceptFetch() {
-  if (window.__YKT_FETCH_PATCHED__) return;
-  window.__YKT_FETCH_PATCHED__ = true;
+  if (fetchInterceptorInstalled) return;
+  fetchInterceptorInstalled = true;
 
   const rawFetch = window.fetch;
   window.fetch = async function (...args) {
