@@ -41,8 +41,9 @@
 // @grant        GM_saveTab
 // @grant        unsafeWindow
 // @run-at       document-start
+// @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
-// @require      https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.min.js
+// @require      https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.min.js
 // ==/UserScript==
 (function() {
   "use strict";
@@ -78,29 +79,24 @@
     },
     uw: window.unsafeWindow || window
   };
-  function loadScriptOnce(src) {
-    return new Promise((resolve, reject) => {
-      if ([ ...document.scripts ].some(s => s.src === src)) return resolve();
-      const s = document.createElement("script");
-      s.src = src;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error(`Failed to load: ${src}`));
-      document.head.appendChild(s);
-    });
+  function runtimeGlobal(name) {
+    const candidates = [ globalThis, window, gm.uw ].filter(Boolean);
+    for (const candidate of candidates) {
+      const value = candidate?.[name];
+      if (value != null) return value;
+    }
+    return;
   }
   async function ensureHtml2Canvas() {
-    const w = gm.uw || window;
-    if (typeof w.html2canvas === "function") return w.html2canvas;
-    await loadScriptOnce("https://html2canvas.hertzen.com/dist/html2canvas.min.js");
-    const h2c = w.html2canvas?.default || w.html2canvas;
+    const raw = runtimeGlobal("html2canvas");
+    const h2c = raw?.default || raw;
     if (typeof h2c === "function") return h2c;
-    throw new Error("html2canvas 未正确加载");
+    throw new Error("html2canvas 固定依赖未加载或不可用");
   }
   async function ensureJsPDF() {
-    if (window.jspdf?.jsPDF) return window.jspdf;
-    await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
-    if (!window.jspdf?.jsPDF) throw new Error("jsPDF 未加载成功");
-    return window.jspdf;
+    const raw = runtimeGlobal("jspdf");
+    if (raw?.jsPDF) return raw;
+    throw new Error("jsPDF 固定依赖未加载或不可用");
   }
   function randInt(l, r) {
     return l + Math.floor(Math.random() * (r - l + 1));
