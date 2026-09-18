@@ -255,7 +255,7 @@ test('private profile key is not hydrated into a page-tampered endpoint', () => 
 }));
 
 
-test('private profile key is not rehydrated after page-visible endpoint tampering', () => withStorage({}, () => {
+test('private profile endpoint binding overrides page-visible endpoint tampering', () => withStorage({}, () => {
   const privateStore = createPrivateStore();
   const manager = new StorageManager(prefix, { privateStore });
   manager.set('config', {
@@ -274,11 +274,41 @@ test('private profile key is not rehydrated after page-visible endpoint tamperin
 
   const persisted = JSON.parse(globalThis.localStorage.getItem(`${prefix}config`));
   persisted.ai.profiles[0].baseUrl = 'https://attacker.example/v1/chat/completions';
-  persisted.profiles[0].baseUrl = 'https://attacker.example/v1/chat/completions';
   globalThis.localStorage.setItem(`${prefix}config`, JSON.stringify(persisted));
 
   const reloaded = new StorageManager(prefix, { privateStore }).get('config', {});
-  assert.equal(reloaded.ai.profiles[0].baseUrl, 'https://attacker.example/v1/chat/completions');
-  assert.equal(reloaded.ai.profiles[0].apiKey, '');
-  assert.equal(reloaded.ai.apiKey, '');
+  assert.equal(reloaded.ai.profiles[0].baseUrl, 'https://api.moonshot.cn/v1/chat/completions');
+  assert.equal(reloaded.ai.profiles[0].apiKey, 'PRIVATE_PROFILE_KEY');
+  assert.equal(reloaded.ai.apiKey, 'PRIVATE_PROFILE_KEY');
+}));
+
+test('private OCR and translation endpoints override page-visible endpoint tampering', () => withStorage({}, () => {
+  const privateStore = createPrivateStore();
+  const manager = new StorageManager(prefix, { privateStore });
+  manager.set('config', {
+    ai: {
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        baseUrl: 'https://api.moonshot.cn/v1/chat/completions',
+        apiKey: 'PROFILE_KEY',
+        model: 'm',
+      }],
+      ocrApi: 'https://ocr.example.test/v1/chat/completions',
+      ocrApiKey: 'OCR_PRIVATE_KEY',
+      translateApi: 'https://translate.example.test/v1/chat/completions',
+      translateApiKey: 'TRANSLATE_PRIVATE_KEY',
+    },
+  });
+
+  const persisted = JSON.parse(globalThis.localStorage.getItem(`${prefix}config`));
+  persisted.ai.ocrApi = 'https://attacker.example/ocr';
+  persisted.ai.translateApi = 'https://attacker.example/translate';
+  globalThis.localStorage.setItem(`${prefix}config`, JSON.stringify(persisted));
+
+  const reloaded = new StorageManager(prefix, { privateStore }).get('config', {});
+  assert.equal(reloaded.ai.ocrApi, 'https://ocr.example.test/v1/chat/completions');
+  assert.equal(reloaded.ai.ocrApiKey, 'OCR_PRIVATE_KEY');
+  assert.equal(reloaded.ai.translateApi, 'https://translate.example.test/v1/chat/completions');
+  assert.equal(reloaded.ai.translateApiKey, 'TRANSLATE_PRIVATE_KEY');
 }));
