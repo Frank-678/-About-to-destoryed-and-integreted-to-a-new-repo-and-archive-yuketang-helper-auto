@@ -6,6 +6,22 @@ import { chooseAnswerRoute } from './answer-routing.js';
 const ANSWER_REQUEST_TIMEOUT_MS = 15000;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, Math.max(0, ms|0))); }
+
+function answerBusinessError(resp, context = '提交') {
+  const code = Number(resp?.code);
+  const raw = String(resp?.msg || '请求失败');
+  let message = `${raw} (${resp?.code})`;
+  if (code === 50028) {
+    message = '题目已提交过，普通提交被服务器拒绝；请使用“强制补交” (50028)';
+  } else if (code === 50026) {
+    message = '题目已结束，普通提交被服务器拒绝；请使用“强制补交” (50026)';
+  }
+  const error = new Error(message);
+  error.code = Number.isFinite(code) ? code : resp?.code;
+  error.serverMessage = raw;
+  error.context = context;
+  return error;
+}
 function calcAutoWaitMs() {
   const base = Math.max(0, (ui?.config?.autoAnswerDelay ?? 0));
   const rand = Math.max(0, (ui?.config?.autoAnswerRandomDelay ?? 0));
@@ -79,7 +95,7 @@ export async function answerProblem(problem, result, options = {}) {
 
   const resp = await xhrPost(url, payload, headers);
   if (resp.code === 0) return resp;
-  throw new Error(`${resp.msg} (${resp.code})`);
+  throw answerBusinessError(resp, 'answer');
 }
 
 /**
@@ -104,7 +120,7 @@ export async function retryAnswer(problem, result, dt, options = {}) {
 
   const resp = await xhrPost(url, payload, headers);
   if (resp.code !== 0) {
-    throw new Error(`${resp.msg} (${resp.code})`);
+    throw answerBusinessError(resp, 'retry');
   }
   const okList = resp?.data?.success || [];
   const targetId = String(problem.problemId);
