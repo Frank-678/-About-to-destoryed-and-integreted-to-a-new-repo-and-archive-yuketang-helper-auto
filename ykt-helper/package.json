@@ -9,8 +9,8 @@
     "test": "npm run test:legacy && npm run test:unit && npm run test:contract && npm run test:scenario",
     "test:legacy": "node --test test/*.test.js",
     "test:unit": "node --test test/unit/*.test.js",
-    "test:contract": "node --test-concurrency=1 --import ./test/support/register-raw-loader.mjs --test test/contract/*.test.js",
-    "test:scenario": "node --test-concurrency=1 --import ./test/support/register-raw-loader.mjs --test test/scenario/*.test.js",
+    "test:contract": "node test/support/run-test-files.mjs contract",
+    "test:scenario": "node test/support/run-test-files.mjs scenario",
     "test:build": "node --test test/build/*.test.js",
     "test:all": "npm test && npm run build && npm run test:build",
     "postbuild": "node -e \"import('./rollup.config.mjs').then(({ OUT_FILE }) => console.log('\\n✅ Build done: ' + OUT_FILE))\""
