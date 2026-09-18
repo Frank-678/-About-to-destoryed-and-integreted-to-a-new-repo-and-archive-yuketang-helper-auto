@@ -148,3 +148,51 @@ test('translation cannot reuse the main private profile key on a different endpo
   );
   assert.equal(recorder.calls.length, before);
 });
+
+
+test('text AI request uses the shared 120 second default timeout budget', async () => {
+  recorder.respond(response('ok'));
+  await queryAI('hello', aiConfig());
+  assert.equal(recorder.calls.at(-1).timeout, 120000);
+});
+
+test('single-step vision uses the shared 120 second default timeout budget', async () => {
+  recorder.respond(response('答案: A'));
+  const cfg = aiConfig({ profile: { model: 'same-model', visionModel: 'same-model' } });
+  await queryAIVision('QUJD', '题目文本', cfg, { disableTwoStep: true });
+  assert.equal(recorder.calls.at(-1).timeout, 120000);
+});
+
+test('two-step vision timeout fails fast without launching an expensive fallback request', async () => {
+  const before = recorder.calls.length;
+  recorder.timeout();
+  await assert.rejects(
+    () => queryAIVision('QUJD', '题目文本', aiConfig(), { problemType: 1 }),
+    /超时|timeout/i,
+  );
+  assert.equal(recorder.calls.length - before, 1);
+});
+
+test('step2 timeout does not trigger a third single-step request', async () => {
+  const before = recorder.calls.length;
+  recorder.respond({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          question_type: 'single_choice',
+          stem: '1+1=?',
+          options: { A: '1', B: '2' },
+          image_facts: [],
+          requires_image_for_solution: false,
+        }),
+      },
+    }],
+  });
+  recorder.timeout();
+
+  await assert.rejects(
+    () => queryAIVision('QUJD', '题目文本', aiConfig(), { problemType: 1 }),
+    /超时|timeout/i,
+  );
+  assert.equal(recorder.calls.length - before, 2);
+});
