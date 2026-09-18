@@ -254,6 +254,7 @@ export function createGmRequestRecorder() {
     if (!next) return { abort() {} };
     queueMicrotask(() => {
       if (next.type === 'error') options.onerror?.(next.error || new Error('network error'));
+      else if (next.type === 'timeout') options.ontimeout?.();
       else options.onload?.({ status: next.status ?? 200, responseText: typeof next.body === 'string' ? next.body : JSON.stringify(next.body ?? {}) });
     });
     return { abort() {} };
@@ -263,6 +264,7 @@ export function createGmRequestRecorder() {
     calls,
     respond(body, status = 200) { queue.push({ type: 'load', body, status }); },
     fail(error) { queue.push({ type: 'error', error }); },
+    timeout() { queue.push({ type: 'timeout' }); },
   };
 }
 
