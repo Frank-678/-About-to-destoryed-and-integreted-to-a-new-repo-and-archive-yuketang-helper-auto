@@ -119,3 +119,11 @@ test('metadata declares Tampermonkey connect permissions for built-in and custom
   }
   assert.match(text, /^\/\/ @connect\s+\*$/m);
 });
+
+
+test('pinned @require dependencies carry exact SHA-256 integrity hashes', () => {
+  const text = bundle();
+  assert.match(text, /html2canvas@1\.4\.1\/dist\/html2canvas\.min\.js#sha256=6H5VB5QyLldKH9oMFUmjxw2uWpPZETQXpCkBaDjquMs=/);
+  assert.match(text, /jspdf@2\.5\.1\/dist\/jspdf\.umd\.min\.js#sha256=mMzxeqEMILsTAXYmGPzJtqs6Tn8mtgcdZNC0EVTfOHU=/);
+  assert.match(text, /mathjax@3\.2\.2\/es5\/tex-svg\.min\.js#sha256=5FOQtjyN31BBQmvTsCf1iypgSa37N8n\+8Kyn81mgUxg=/);
+});
