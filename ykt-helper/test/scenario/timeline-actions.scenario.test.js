@@ -1,18 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  createGmRequestRecorder,
   createXMLHttpRequestRecorder,
   installBrowserGlobals,
   uninstallBrowserGlobals,
 } from '../support/browser-harness.js';
 
-const gmRecorder = createGmRequestRecorder();
 const xhrRecorder = createXMLHttpRequestRecorder();
-installBrowserGlobals({
-  href: 'https://www.yuketang.cn/lesson/fullscreen/v3/lesson-timeline',
-  gmRequest: gmRecorder.fn,
-});
+installBrowserGlobals({ href: 'https://www.yuketang.cn/lesson/fullscreen/v3/lesson-timeline' });
 globalThis.XMLHttpRequest = xhrRecorder.FakeXMLHttpRequest;
 
 const { repo } = await import('../../src/state/repo.js');
@@ -43,14 +38,8 @@ function reset() {
   });
   ui.config.ai = {
     ...ui.config.ai,
-    profiles: [{
-      id: 'timeline-ai',
-      baseUrl: 'https://example.test/v1/chat/completions',
-      apiKey: 'test-key',
-      model: 'same-model',
-      visionModel: 'same-model',
-    }],
-    activeProfileId: 'timeline-ai',
+    profiles: [{ id: 'none', apiKey: '' }],
+    activeProfileId: 'none',
   };
   return lessonId;
 }
@@ -97,7 +86,7 @@ test('first timeline snapshot is historical baseline and never queues submission
   assert.equal(xhrRecorder.calls.length, before);
 });
 
-test('a problem first appearing in a later timeline snapshot becomes live and reaches submit', async () => {
+test('a later timeline problem becomes live, attempts once, and never fabricates a submit without AI', async () => {
   const lessonId = reset();
   addProblem('old-q', 'old-s');
   actions.onFetchTimeline([
@@ -105,8 +94,6 @@ test('a problem first appearing in a later timeline snapshot becomes live and re
   ], { lessonId });
 
   const newProblem = addProblem('new-q', 'new-s');
-  gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] });
-  xhrRecorder.respond({ code: 0, data: {} });
   const before = xhrRecorder.calls.length;
   actions.onFetchTimeline([
     { type: 'problem', prob: 'old-q', sid: 'old-s', pres: 'p1', dt: Date.now(), limit: 60 },
@@ -118,28 +105,30 @@ test('a problem first appearing in a later timeline snapshot becomes live and re
   assert.equal(status.autoAnswerQueued, true);
   assert.ok(status.autoAnswerTime !== null);
   actions.tickAutoAnswer();
-  assert.equal(await waitFor(() => repo.problemStatus.get('new-q')?.done === true), true);
-  assert.equal(xhrRecorder.calls.length - before, 1);
-  assert.equal(xhrRecorder.calls.at(-1).url, '/api/v3/lesson/problem/answer');
-  assert.deepEqual(newProblem.result, ['A']);
+  assert.equal(await waitFor(() => repo.problemStatus.get('new-q')?.phase === 'failed'), true);
+  const finalStatus = repo.problemStatus.get('new-q');
+  assert.equal(finalStatus.attempts, 1);
+  assert.match(finalStatus.lastError, /AI Profile|API Key/);
+  assert.equal(xhrRecorder.calls.length - before, 0);
+  assert.equal(newProblem.result, null);
 });
 
 test('the same timeline problem is never promoted twice', async () => {
   const lessonId = reset();
   addProblem('same-q', 'same-s');
   actions.onFetchTimeline([], { lessonId });
-  gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] });
-  xhrRecorder.respond({ code: 0, data: {} });
 
   const entry = { type: 'problem', prob: 'same-q', sid: 'same-s', pres: 'p1', dt: Date.now(), limit: 60 };
   actions.onFetchTimeline([entry], { lessonId });
   actions.tickAutoAnswer();
-  assert.equal(await waitFor(() => repo.problemStatus.get('same-q')?.done === true), true);
+  assert.equal(await waitFor(() => repo.problemStatus.get('same-q')?.phase === 'failed'), true);
+  const firstAttempts = repo.problemStatus.get('same-q')?.attempts;
   const afterFirst = xhrRecorder.calls.length;
 
   actions.onFetchTimeline([entry], { lessonId });
   actions.tickAutoAnswer();
   await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(repo.problemStatus.get('same-q')?.attempts, firstAttempts);
   assert.equal(xhrRecorder.calls.length, afterFirst);
 });
 
