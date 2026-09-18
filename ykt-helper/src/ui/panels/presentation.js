@@ -8,6 +8,7 @@ import { queryOCRVision, queryTranslationText } from '../../ai/openai.js';
 import { emitInternalEvent } from '../../core/internal-events.js';
 import { trustedUiHandler } from '../../core/trusted-ui-event.js';
 import { getFiniteDeadline, isProblemExpired } from '../../core/problem-view-state.js';
+import { hasSubmittedAnswer } from '../../core/answer-state.js';
 
 let mounted = false;
 let host;
@@ -907,7 +908,7 @@ export function updatePresentationList() {
         const pid = s.problem.problemId;
         const status = repo.problemStatus.get(pid);
         if (status) thumb.classList.add('unlocked');
-        if (s.problem.result) thumb.classList.add('answered');
+        if (hasSubmittedAnswer(s.problem.result)) thumb.classList.add('answered');
       }
 
       thumb.addEventListener('click', (ev) => {
