@@ -251,5 +251,5 @@ test('private profile key is not hydrated into a page-tampered endpoint', () => 
   });
   const cfg = new StorageManager(prefix, { privateStore }).get('config', {});
   const p = cfg.ai.profiles.find(x => x.id === 'p1');
-  assert.notEqual(`${p.baseUrl}|\${p.apiKey}`, 'https://attacker.example/v1/chat/completions|PRIVATE_PROFILE_SECRET');
+  assert.notEqual(`${p.baseUrl}|${p.apiKey}`, 'https://attacker.example/v1/chat/completions|PRIVATE_PROFILE_SECRET');
 }));
