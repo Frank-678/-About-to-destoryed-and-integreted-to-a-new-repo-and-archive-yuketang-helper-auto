@@ -4,6 +4,7 @@ import { ui } from '../ui-context.js';
 import { DEFAULT_CONFIG } from '../../core/types.js';
 import { storage } from '../../core/storage.js';
 import { screenWakeLock } from '../../core/screen-wake-lock.js';
+import { trustedUiHandler } from '../../core/trusted-ui-event.js';
 import { applyProfileForm, readReminderForm, syncReminderForm } from '../../core/settings-form.js';
 
 let mounted = false;
@@ -219,7 +220,7 @@ export function mountSettingsPanel() {
   });
 
   // 添加 profile
-  $profileAdd.addEventListener('click', () => {
+  $profileAdd.addEventListener('click', trustedUiHandler(() => {
     const id = `p_${Date.now().toString(36)}`;
     const newP = {
       id,
@@ -236,10 +237,10 @@ export function mountSettingsPanel() {
     refreshProfileSelect();
     refreshAnswerProfileSelects();
     loadProfileToForm(id);
-  });
+  }));
 
   // 删除 profile
-  $profileDel.addEventListener('click', () => {
+  $profileDel.addEventListener('click', trustedUiHandler(() => {
     const ai = ui.config.ai;
     if (ai.profiles.length <= 1) {
       ui.toast('至少保留一个配置', 2500);
@@ -252,7 +253,7 @@ export function mountSettingsPanel() {
     refreshProfileSelect();
     refreshAnswerProfileSelects();
     loadProfileToForm(ai.activeProfileId);
-  });
+  }));
 
   function syncFormFromConfig() {
     ensureAIProfiles(ui.config.ai || (ui.config.ai = {}));
@@ -297,7 +298,7 @@ export function mountSettingsPanel() {
 
   // 保存设置
 
-  root.querySelector('#ykt-btn-settings-save').addEventListener('click', async () => {
+  root.querySelector('#ykt-btn-settings-save').addEventListener('click', trustedUiHandler(async () => {
     // --- 保存当前 Profile ---
     const ai = ui.config.ai;
     const pid = ai.activeProfileId;
@@ -373,13 +374,13 @@ export function mountSettingsPanel() {
     } else {
       ui.toast('设置已保存');
     }
-  });
+  }));
 
   //--------------------------------------
   //            重置为默认
   //--------------------------------------
 
-  root.querySelector('#ykt-btn-settings-reset').addEventListener('click', async () => {
+  root.querySelector('#ykt-btn-settings-reset').addEventListener('click', trustedUiHandler(async () => {
     if (!confirm('确定要重置为默认设置吗？')) return;
 
     Object.assign(ui.config, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
@@ -400,7 +401,7 @@ export function mountSettingsPanel() {
     ui.updateAutoAnswerBtn();
     await screenWakeLock.setEnabled(false);
     ui.toast('设置已重置');
-  });
+  }));
 
   // 音频设置
   const MAX_SIZE = 2 * 1024 * 1024;
