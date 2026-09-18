@@ -6,15 +6,8 @@ import { injectStyles } from './ui/styles.js';
 import { installToolbar } from './ui/toolbar.js';
 import { actions } from './state/actions.js';
 import { ui } from './ui/ui-api.js'; 
-import { gm } from './core/env.js';
+import { gm, ensureFontAwesome } from './core/env.js';
 import { getRuntimeMode, installDesktopRouteGuard, shouldStartDesktopRuntime } from './core/runtime-mode.js';
-
-function loadFA() {
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
-  document.head.appendChild(link);
-}
 
 let periodicReloadTimer = null;
 
@@ -62,7 +55,7 @@ function startDesktopRuntime() {
   if (desktopStarted) return;
   desktopStarted = true;
 
-  loadFA();
+  ensureFontAwesome();
   injectStyles();
   ui._mountAll?.();
   installToolbar();
