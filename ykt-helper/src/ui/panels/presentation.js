@@ -5,6 +5,7 @@ import { actions } from '../../state/actions.js';
 import { ensureHtml2Canvas, ensureJsPDF } from '../../core/env.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { queryOCRVision, queryTranslationText } from '../../ai/openai.js';
+import { emitInternalEvent } from '../../core/internal-events.js';
 
 let mounted = false;
 let host;
@@ -695,7 +696,7 @@ export function mountPresentationPanel() {
   $('#ykt-presentation-close')?.addEventListener('click', () => showPresentationPanel(false));
   $('#ykt-open-problem-list')?.addEventListener('click', () => {
     showPresentationPanel(false);
-    window.dispatchEvent(new CustomEvent('ykt:open-problem-list'));
+    emitInternalEvent('open-problem-list');
   });
 
   $('#ykt-ask-current')?.addEventListener('click', () => {
@@ -708,10 +709,8 @@ export function mountPresentationPanel() {
       }
       L('点击“提问当前PPT”(多选)', { selectedCount: selectedSlideIds.size, slidesCount: slides.length });
       if (slides.length === 0) return ui.toast('所选页面无可用图片', 2500);
-      window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slides', {
-        detail: { slides, source: 'manual' }
-      }));
-      window.dispatchEvent(new CustomEvent('ykt:open-ai'));
+      emitInternalEvent('ask-ai-for-slides', { slides, source: 'manual' });
+      emitInternalEvent('open-ai');
       return;
     }
 
@@ -721,10 +720,8 @@ export function mountPresentationPanel() {
     L('点击“提问当前PPT”', { currentSlideId: sid, lookupHit: lookup.hit, hasSlide: !!lookup.slide });
     if (!sid) return ui.toast('请先在左侧选择一页PPT', 2500);
     const imageUrl = getSlideImageUrl(lookup.slide);
-    window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slide', {
-      detail: { slideId: sid, imageUrl }
-    }));
-    window.dispatchEvent(new CustomEvent('ykt:open-ai'));
+    emitInternalEvent('ask-ai-for-slide', { slideId: sid, imageUrl });
+    emitInternalEvent('open-ai');
   });
 
   $('#ykt-download-current')?.addEventListener('click', downloadCurrentSlide);
@@ -952,7 +949,7 @@ export function updatePresentationList() {
 
         const detail = { slideId: slideIdStr, presentationId: presIdStr };
         L('派发事件 ykt:presentation:slide-selected', detail);
-        window.dispatchEvent(new CustomEvent('ykt:presentation:slide-selected', { detail }));
+        emitInternalEvent('presentation:slide-selected', detail);
 
         L('调用 actions.navigateTo ->', { presIdStr, slideIdStr });
         actions.navigateTo(presIdStr, slideIdStr);
@@ -1084,7 +1081,7 @@ export function updateSlideView() {
     editAnswer.textContent = '编辑/补交';
     editAnswer.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      window.dispatchEvent(new CustomEvent('ykt:open-problem-list', { detail: { problemId: prob.problemId } }));
+      emitInternalEvent('open-problem-list', { problemId: prob.problemId });
     });
     problemActions.appendChild(editAnswer);
     box.appendChild(problemActions);
