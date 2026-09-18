@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（JS版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.21.6.7
+// @version      1.21.6.8
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -108,6 +108,17 @@
   }
   function randInt(l, r) {
     return l + Math.floor(Math.random() * (r - l + 1));
+  }
+  async function ensureFontAwesome() {
+    const href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css";
+    if ([ ...document.styleSheets ].some(s => s.href === href)) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.integrity = "sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==";
+    link.crossOrigin = "anonymous";
+    link.referrerPolicy = "no-referrer";
+    document.head.appendChild(link);
   }
   const runtimeActionRef = {
     current: null
@@ -1720,9 +1731,10 @@
     // 抛给上层，由上层走“直跳 lesson 页”的兜底逻辑
         throw new Error("checkinClass HTTP 400");
   }
+  let fetchInterceptorInstalled = false;
   (function interceptFetch() {
-    if (window.__YKT_FETCH_PATCHED__) return;
-    window.__YKT_FETCH_PATCHED__ = true;
+    if (fetchInterceptorInstalled) return;
+    fetchInterceptorInstalled = true;
     const rawFetch = window.fetch;
     window.fetch = async function(...args) {
       const [input, init] = args;
@@ -3417,7 +3429,7 @@
           mode: activeAIProfile ? "ai" : "default-fallback",
           profileId: answerProfile?.id || null
         });
-        if (!activeAIProfile) parsed = makeDefaultAnswer(problem); else {
+        if (!activeAIProfile) throw new Error("未配置可用的 AI Profile 或 API Key，自动作答未提交"); else {
           try {
             image = await captureSlideImage(status.slideId);
           } catch (error) {
@@ -5077,7 +5089,7 @@
     }
   };
   registerRuntimeActions(actions);
-  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>AI雨课堂助手设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <input type="password" id="kimi-api-key" placeholder="输入当前配置的 API Key">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">文本模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-vision-model">图像模型 ID:</label>\n          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-temperature">Temperature:</label>\n          <input type="number" id="ykt-ai-temperature" min="0" max="2" step="0.01" placeholder="留空则不传">\n          <small>当前 Profile 专用。留空时不发送该参数，由模型决定默认值；部分 Kimi 模型要求留空。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api">OCR模型API:</label>\n          <input type="text" id="ykt-ai-ocr-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于课件“文字识别”功能；留空时走当前 AI Profile。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api-key">OCR API Key:</label>\n          <input type="password" id="ykt-ai-ocr-api-key" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <small>仅用于课件 OCR；不填时自动回退到当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api">翻译模型API:</label>\n          <input type="text" id="ykt-ai-translate-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 URL。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api-key">翻译 API Key:</label>\n          <input type="password" id="ykt-ai-translate-api-key" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-model">翻译模型 ID:</label>\n          <input type="text" id="ykt-ai-translate-model" placeholder="留空则复用当前 AI Profile 的文本模型">\n          <small>建议填写纯文本模型；留空时复用当前 AI Profile 的文本模型。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n          <small>题目首次出现时按延迟设置自动分析并提交。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-recover-unanswered">\n            <span class="checkmark"></span>\n            刷新后恢复已排队/被中断的 AI 作答\n          </label>\n          <small>只恢复刷新前已经记录为“待作答”或“作答中”的题目；不会默认扫描历史课件。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-recover-expired">\n            <span class="checkmark"></span>\n            刷新后自动强制补交已过期题目\n          </label>\n          <small>需要同时开启上项；已过截止时间时会调用补交接口，风险较高，默认关闭。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-scan-unanswered">\n            <span class="checkmark"></span>\n            自动扫描当前课程中未作答题目\n          </label>\n          <small>仅当前课程已缓存题目；会主动让 AI 尝试未作答题，可能包含旧题，默认关闭。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-force-retry">\n            <span class="checkmark"></span>\n            允许截止后自动强制补交\n          </label>\n          <small>仅在同时开启自动作答时生效；服务器拒绝补交时不会重复提交。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label for="ykt-input-answer-priority-times">快速作答时间点：</label>\n          <input type="text" id="ykt-input-answer-priority-times" placeholder="例如：10:00, 14:30">\n          <small>每个时间点前 1 分钟至后 10 分钟使用快速模型；按浏览器本地时间计算。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-fast-profile">快速作答配置：</label>\n          <select id="ykt-ai-fast-profile"></select>\n          <small>未选择或配置不可用时回退到当前 AI 配置。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-answer-verification">\n            <span class="checkmark"></span>\n            使用准确模型复核并纠错\n          </label>\n          <small>快速模型首次提交后复核一次；发现不同答案时最多重新提交一次。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-verify-profile">复核模型配置：</label>\n          <select id="ykt-ai-verify-profile"></select>\n          <small>建议选择与快速模型不同且更准确的配置。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-verification-delay">复核等待 (秒):</label>\n          <input type="number" id="ykt-input-verification-delay" min="0" max="60">\n          <small>首次提交后等待多久再调用复核模型，通常保持 0 即可。</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>课堂提醒</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-all" />\n            <span class="checkmark"></span>\n            总提醒开关\n          </label>\n          <small>关闭后，下面每一种课堂事件都会静音；工具栏铃铛与此开关同步。</small>\n        </div>\n        <h5>提醒事件</h5>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-problem-start" />\n            <span class="checkmark"></span>\n            新题 / 答题开始\n          </label>\n          <small>老师开启一道可作答习题时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-danmu-round-start" />\n            <span class="checkmark"></span>\n            新一轮弹幕开始\n          </label>\n          <small>与上一条弹幕间隔达到 60 秒后，收到新一轮第一条弹幕时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-danmu-follow-trigger" />\n            <span class="checkmark"></span>\n            7 条弹幕达到跟发条件\n          </label>\n          <small>连续 7 条弹幕在 30 秒内达到条件时提醒；出现次数最多的文本胜出，并列时取最新一条。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-assessment-publish" />\n            <span class="checkmark"></span>\n            考试/测试题组发布提醒\n          </label>\n          <small>老师发布测试、考试或题组时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-courseware-publish" />\n            <span class="checkmark"></span>\n            课件发布提醒\n          </label>\n          <small>只在发布新课件时提醒；翻阅旧课件和翻页不会提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-other-publish" />\n            <span class="checkmark"></span>\n            其他无法分类的发布提醒\n          </label>\n          <small>用于不同学校服务器的未知发布事件；若提醒过多可单独关闭。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-lesson-finished" />\n            <span class="checkmark"></span>\n            课程结束提醒\n          </label>\n          <small>老师结束当前课程时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-scheduled" />\n            <span class="checkmark"></span>\n            自动作答已排队\n          </label>\n          <small>脚本为新题安排延迟作答时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-started" />\n            <span class="checkmark"></span>\n            自动作答开始\n          </label>\n          <small>脚本开始执行本地或 AI 作答流程时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-succeeded" />\n            <span class="checkmark"></span>\n            自动作答成功\n          </label>\n          <small>答案提交成功时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-failed" />\n            <span class="checkmark"></span>\n            自动作答失败\n          </label>\n          <small>截图、AI 分析或答案提交失败时提醒。</small>\n        </div>\n        <h5>提醒方式</h5>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-native" />\n            <span class="checkmark"></span>\n            系统通知\n          </label>\n          <small>调用浏览器或篡改猴的原生通知。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-popup" />\n            <span class="checkmark"></span>\n            页面弹窗\n          </label>\n          <small>在当前页面右下角显示提醒卡片。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-sound" />\n            <span class="checkmark"></span>\n            提示声音\n          </label>\n          <small>播放内置或自定义提示音。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <div class="setting-item">\n          <label>自定义提示音（其一即可）</label>\n          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n            <button id="ykt-btn-apply-audio-url">应用URL</button>\n            <button id="ykt-btn-preview-audio">预览</button>\n            <button id="ykt-btn-clear-audio">清除自定义音频</button>\n          </div>\n          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>课堂运行</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-follow-danmu" />\n            <span class="checkmark"></span>\n            重复弹幕自动跟发\n          </label>\n          <small>开启后，当前班级连续 7 条弹幕在 30 秒内会自动跟发出现次数最多的文本；并列时跟发最新一条。相邻弹幕间隔达到 60 秒视为新一轮，每轮最多跟发 2 条，同一文本每轮只跟发一次。需要课堂弹幕输入框可用。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-keep-screen-awake" />\n            <span class="checkmark"></span>\n            课堂保持亮屏（仅防自动熄屏）\n          </label>\n          <small>仅在课堂页且页面可见时生效。无法阻止手动锁屏、切换到后台后的浏览器冻结；省电模式也可能拒绝该功能。</small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
+  var tpl$5 = '<div id="ykt-settings-panel" class="ykt-panel">\n  <div class="panel-header">\n    <h3>AI雨课堂助手设置</h3>\n    <div class="setting-actions">\n        <button id="ykt-btn-settings-save">保存设置</button>\n        <button id="ykt-btn-settings-reset" color="red">重置为默认</button>\n    </div>\n    <span class="close-btn" id="ykt-settings-close"><i class="fas fa-times"></i></span>\n  </div>\n\n  <div class="panel-body">\n    <div class="settings-content">\n      <div class="setting-group">\n      <h4>AI配置</h4>\n\n        \x3c!-- 当前 profile 选择 --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-select">当前配置：</label>\n          <select id="ykt-ai-profile-select"></select>\n          <button id="ykt-ai-profile-add">新增配置</button>\n          <button id="ykt-ai-profile-del" color="red">删除当前</button>\n        </div>\n\n        \x3c!-- 具体配置字段：针对当前 profile --\x3e\n        <div class="setting-item">\n          <label for="ykt-ai-profile-name">名称:</label>\n          <input type="text" id="ykt-ai-profile-name" placeholder="例如：Kimi 8k / OpenAI GPT-4o">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-base-url">URL:</label>\n          <input type="text" id="ykt-ai-base-url" placeholder="https://api.moonshot.cn/...">\n          <small>兼容 OpenAI 协议的服务端，例如 api.openai.com / api.moonshot.cn / 自建代理。</small>\n        </div>\n\n        <div class="setting-item">\n          <label for="kimi-api-key">API Key:</label>\n          <input type="password" id="kimi-api-key" autocomplete="new-password" placeholder="输入当前配置的 API Key">\n          <button type="button" id="ykt-ai-api-key-clear">清除已保存 Key</button>\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-model">文本模型 ID:</label>\n          <input type="text" id="ykt-ai-model" placeholder="例如：moonshot-v1-8k / gpt-4o-mini">\n        </div>\n\n        <div class="setting-item">\n          <label for="ykt-ai-vision-model">图像模型 ID:</label>\n          <input type="text" id="ykt-ai-vision-model" placeholder="默认不填则与文本模型相同">\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-temperature">Temperature:</label>\n          <input type="number" id="ykt-ai-temperature" min="0" max="2" step="0.01" placeholder="留空则不传">\n          <small>当前 Profile 专用。留空时不发送该参数，由模型决定默认值；部分 Kimi 模型要求留空。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api">OCR模型API:</label>\n          <input type="text" id="ykt-ai-ocr-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于课件“文字识别”功能；留空时走当前 AI Profile。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-ocr-api-key">OCR API Key:</label>\n          <input type="password" id="ykt-ai-ocr-api-key" autocomplete="new-password" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <button type="button" id="ykt-ai-ocr-api-key-clear">清除已保存 Key</button>\n          <small>仅用于课件 OCR；不填时自动回退到当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api">翻译模型API:</label>\n          <input type="text" id="ykt-ai-translate-api" placeholder="留空则复用当前 AI Profile 的 URL">\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 URL。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-api-key">翻译 API Key:</label>\n          <input type="password" id="ykt-ai-translate-api-key" autocomplete="new-password" placeholder="留空则复用当前 AI Profile 的 API Key">\n          <button type="button" id="ykt-ai-translate-api-key-clear">清除已保存 Key</button>\n          <small>仅用于 OCR 结果翻译；留空时复用当前 AI Profile 的 API Key。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-translate-model">翻译模型 ID:</label>\n          <input type="text" id="ykt-ai-translate-model" placeholder="留空则复用当前 AI Profile 的文本模型">\n          <small>建议填写纯文本模型；留空时复用当前 AI Profile 的文本模型。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>UI设置</h4>\n          <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ui-tex">\n            <span class="checkmark"></span>\n            渲染LaTeX格式的公式\n          </label>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>自动作答设置</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join">\n            <span class="checkmark"></span>\n            自动进入课堂\n          </label>\n          <small>默认自动进入“正在上课”的课堂。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-join-auto-answer">\n            <span class="checkmark"></span>\n            对于自动进入的课堂，默认使用自动答题\n          </label>\n          <small>仅对“自动进入”的课堂生效，不会影响手动进入课堂的行为。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-answer">\n            <span class="checkmark"></span>\n            启用自动作答\n          </label>\n          <small>题目首次出现时按延迟设置自动分析并提交。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-recover-unanswered">\n            <span class="checkmark"></span>\n            刷新后恢复已排队/被中断的 AI 作答\n          </label>\n          <small>只恢复刷新前已经记录为“待作答”或“作答中”的题目；不会默认扫描历史课件。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-recover-expired">\n            <span class="checkmark"></span>\n            刷新后自动强制补交已过期题目\n          </label>\n          <small>需要同时开启上项；已过截止时间时会调用补交接口，风险较高，默认关闭。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-scan-unanswered">\n            <span class="checkmark"></span>\n            自动扫描当前课程中未作答题目\n          </label>\n          <small>仅当前课程已缓存题目；会主动让 AI 尝试未作答题，可能包含旧题，默认关闭。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-force-retry">\n            <span class="checkmark"></span>\n            允许截止后自动强制补交\n          </label>\n          <small>仅在同时开启自动作答时生效；服务器拒绝补交时不会重复提交。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-ai-auto-analyze">\n            <span class="checkmark"></span>\n            打开 AI 页面时自动分析\n          </label>\n          <small>开启后，进入“AI 解答”面板即自动向 AI 询问当前题目</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-answer-delay">作答延迟时间 (秒):</label>\n          <input type="number" id="ykt-input-answer-delay" min="1" max="60">\n          <small>题目出现后等待多长时间开始作答</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-random-delay">随机延迟范围 (秒):</label>\n          <input type="number" id="ykt-input-random-delay" min="0" max="30">\n          <small>在基础延迟基础上随机增加的时间范围</small>\n        </div><div class="setting-item">\n          <label for="ykt-input-answer-priority-times">快速作答时间点：</label>\n          <input type="text" id="ykt-input-answer-priority-times" placeholder="例如：10:00, 14:30">\n          <small>每个时间点前 1 分钟至后 10 分钟使用快速模型；按浏览器本地时间计算。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-fast-profile">快速作答配置：</label>\n          <select id="ykt-ai-fast-profile"></select>\n          <small>未选择或配置不可用时回退到当前 AI 配置。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-answer-verification">\n            <span class="checkmark"></span>\n            使用准确模型复核并纠错\n          </label>\n          <small>快速模型首次提交后复核一次；发现不同答案时最多重新提交一次。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-ai-verify-profile">复核模型配置：</label>\n          <select id="ykt-ai-verify-profile"></select>\n          <small>建议选择与快速模型不同且更准确的配置。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-verification-delay">复核等待 (秒):</label>\n          <input type="number" id="ykt-input-verification-delay" min="0" max="60">\n          <small>首次提交后等待多久再调用复核模型，通常保持 0 即可。</small>\n        </div><div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-ai-pick-main-first">\n            <span class="checkmark"></span>\n            主界面优先（未勾选则课件浏览优先）\n          </label>\n          <small>仅在普通打开 AI 面板（ykt:open-ai）时生效；从“提问当前PPT”跳转保持最高优先。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>课堂提醒</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-all" />\n            <span class="checkmark"></span>\n            总提醒开关\n          </label>\n          <small>关闭后，下面每一种课堂事件都会静音；工具栏铃铛与此开关同步。</small>\n        </div>\n        <h5>提醒事件</h5>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-problem-start" />\n            <span class="checkmark"></span>\n            新题 / 答题开始\n          </label>\n          <small>老师开启一道可作答习题时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-danmu-round-start" />\n            <span class="checkmark"></span>\n            新一轮弹幕开始\n          </label>\n          <small>与上一条弹幕间隔达到 60 秒后，收到新一轮第一条弹幕时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-danmu-follow-trigger" />\n            <span class="checkmark"></span>\n            7 条弹幕达到跟发条件\n          </label>\n          <small>连续 7 条弹幕在 30 秒内达到条件时提醒；出现次数最多的文本胜出，并列时取最新一条。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-assessment-publish" />\n            <span class="checkmark"></span>\n            考试/测试题组发布提醒\n          </label>\n          <small>老师发布测试、考试或题组时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-courseware-publish" />\n            <span class="checkmark"></span>\n            课件发布提醒\n          </label>\n          <small>只在发布新课件时提醒；翻阅旧课件和翻页不会提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-other-publish" />\n            <span class="checkmark"></span>\n            其他无法分类的发布提醒\n          </label>\n          <small>用于不同学校服务器的未知发布事件；若提醒过多可单独关闭。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-lesson-finished" />\n            <span class="checkmark"></span>\n            课程结束提醒\n          </label>\n          <small>老师结束当前课程时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-scheduled" />\n            <span class="checkmark"></span>\n            自动作答已排队\n          </label>\n          <small>脚本为新题安排延迟作答时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-started" />\n            <span class="checkmark"></span>\n            自动作答开始\n          </label>\n          <small>脚本开始执行本地或 AI 作答流程时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-succeeded" />\n            <span class="checkmark"></span>\n            自动作答成功\n          </label>\n          <small>答案提交成功时提醒。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-auto-answer-failed" />\n            <span class="checkmark"></span>\n            自动作答失败\n          </label>\n          <small>截图、AI 分析或答案提交失败时提醒。</small>\n        </div>\n        <h5>提醒方式</h5>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-native" />\n            <span class="checkmark"></span>\n            系统通知\n          </label>\n          <small>调用浏览器或篡改猴的原生通知。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-popup" />\n            <span class="checkmark"></span>\n            页面弹窗\n          </label>\n          <small>在当前页面右下角显示提醒卡片。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-notify-sound" />\n            <span class="checkmark"></span>\n            提示声音\n          </label>\n          <small>播放内置或自定义提示音。</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-duration">弹窗持续时间 (秒):</label>\n          <input type="number" id="ykt-input-notify-duration" min="2" max="60" />\n          <small>习题出现时，弹窗在屏幕上的停留时长</small>\n        </div>\n        <div class="setting-item">\n          <label for="ykt-input-notify-volume">提醒音量 (0-100):</label>\n          <input type="number" id="ykt-input-notify-volume" min="0" max="100" />\n          <small>用于提示音的音量大小；建议 30~80</small>\n        </div>\n        <div class="setting-item">\n          <button id="ykt-btn-test-notify">测试习题提醒</button>\n        </div>\n        <div class="setting-item">\n          <label>自定义提示音（其一即可）</label>\n          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">\n            <input type="file" id="ykt-input-notify-audio-file" accept="audio/*" />\n            <input type="text" id="ykt-input-notify-audio-url" placeholder="或粘贴在线音频 URL（http/https/data:）" style="min-width:260px"/>\n            <button id="ykt-btn-apply-audio-url">应用URL</button>\n            <button id="ykt-btn-preview-audio">预览</button>\n            <button id="ykt-btn-clear-audio">清除自定义音频</button>\n          </div>\n          <small id="ykt-tip-audio-name" style="display:block;opacity:.8;margin-top:6px"></small>\n          <small>说明：文件将本地存储为 data URL（默认上限 2MB）。URL 需支持跨域访问；若被浏览器拦截自动播放，请先点击“预览”以授权音频播放。</small>\n        </div>\n      </div>\n\n      <div class="setting-group">\n        <h4>课堂运行</h4>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-auto-follow-danmu" />\n            <span class="checkmark"></span>\n            重复弹幕自动跟发\n          </label>\n          <small>开启后，当前班级连续 7 条弹幕在 30 秒内会自动跟发出现次数最多的文本；并列时跟发最新一条。相邻弹幕间隔达到 60 秒视为新一轮，每轮最多跟发 2 条，同一文本每轮只跟发一次。需要课堂弹幕输入框可用。</small>\n        </div>\n        <div class="setting-item">\n          <label class="checkbox-label">\n            <input type="checkbox" id="ykt-input-keep-screen-awake" />\n            <span class="checkmark"></span>\n            课堂保持亮屏（仅防自动熄屏）\n          </label>\n          <small>仅在课堂页且页面可见时生效。无法阻止手动锁屏、切换到后台后的浏览器冻结；省电模式也可能拒绝该功能。</small>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>\n';
   // src/core/settings-form.js
     function text(value) {
     return String(value ?? "").trim();
@@ -5175,13 +5187,16 @@
     const $profileName = root$4.querySelector("#ykt-ai-profile-name");
     const $baseUrl = root$4.querySelector("#ykt-ai-base-url");
     const $api = root$4.querySelector("#kimi-api-key");
+    const $apiClear = root$4.querySelector("#ykt-ai-api-key-clear");
     const $model = root$4.querySelector("#ykt-ai-model");
     const $visionModel = root$4.querySelector("#ykt-ai-vision-model");
     const $temperature = root$4.querySelector("#ykt-ai-temperature");
     const $ocrApi = root$4.querySelector("#ykt-ai-ocr-api");
     const $ocrApiKey = root$4.querySelector("#ykt-ai-ocr-api-key");
+    const $ocrApiKeyClear = root$4.querySelector("#ykt-ai-ocr-api-key-clear");
     const $translateApi = root$4.querySelector("#ykt-ai-translate-api");
     const $translateApiKey = root$4.querySelector("#ykt-ai-translate-api-key");
+    const $translateApiKeyClear = root$4.querySelector("#ykt-ai-translate-api-key-clear");
     const $translateModel = root$4.querySelector("#ykt-ai-translate-model");
     // === 其他 UI 原有字段 ===
         const $auto = root$4.querySelector("#ykt-input-auto-answer");
@@ -5243,6 +5258,42 @@
       notifyPopup: $notifyPopup,
       notifySound: $notifySound
     };
+    function syncSecretField(input, hasStoredSecret, emptyPlaceholder) {
+      if (!input) return;
+      input.value = "";
+      input.dataset.clearSecret = "false";
+      input.placeholder = hasStoredSecret ? "已安全保存；留空保持不变" : emptyPlaceholder;
+    }
+    function readSecretField(input, existingValue = "") {
+      if (!input) return String(existingValue || "");
+      if (input.dataset.clearSecret === "true") return "";
+      const entered = String(input.value || "").trim();
+      return entered || String(existingValue || "");
+    }
+    function armSecretClear(input) {
+      if (!input) return;
+      input.value = "";
+      input.dataset.clearSecret = "true";
+      input.placeholder = "保存设置后将清除此 Key";
+    }
+    function normalizedEndpoint(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      try {
+        return new URL(raw, window.location?.origin || location.origin).href;
+      } catch {
+        return raw;
+      }
+    }
+    function endpointChanged(before, after) {
+      return normalizedEndpoint(before) !== normalizedEndpoint(after);
+    }
+    function needsSecretReentry({currentEndpoint: currentEndpoint, nextEndpoint: nextEndpoint, currentSecret: currentSecret, input: input}) {
+      if (!String(currentSecret || "").trim()) return false;
+      if (!endpointChanged(currentEndpoint, nextEndpoint)) return false;
+      if (input?.dataset?.clearSecret === "true") return false;
+      return !String(input?.value || "").trim();
+    }
     // Profile UI
         function refreshProfileSelect() {
       const ai = ui.config.ai;
@@ -5280,14 +5331,14 @@
       ui.config.ai.activeProfileId = p.id;
       $profileName.value = p.name || "";
       $baseUrl.value = p.baseUrl || "";
-      $api.value = p.apiKey || "";
+      syncSecretField($api, !!p.apiKey, "输入当前配置的 API Key");
       $model.value = p.model || "";
       $visionModel.value = p.visionModel || "";
       $temperature.value = p.temperature ?? "";
       $ocrApi.value = ui.config.ai.ocrApi || "";
-      $ocrApiKey.value = ui.config.ai.ocrApiKey || "";
+      syncSecretField($ocrApiKey, !!ui.config.ai.ocrApiKey, "留空则复用当前 AI Profile 的 API Key");
       $translateApi.value = ui.config.ai.translateApi || "";
-      $translateApiKey.value = ui.config.ai.translateApiKey || "";
+      syncSecretField($translateApiKey, !!ui.config.ai.translateApiKey, "留空则复用当前 AI Profile 的 API Key");
       $translateModel.value = ui.config.ai.translateModel || "";
     }
     // 初始化 Profile 下拉框
@@ -5330,6 +5381,9 @@
       refreshAnswerProfileSelects();
       loadProfileToForm(ai.activeProfileId);
     }));
+    $apiClear?.addEventListener("click", trustedUiHandler(() => armSecretClear($api)));
+    $ocrApiKeyClear?.addEventListener("click", trustedUiHandler(() => armSecretClear($ocrApiKey)));
+    $translateApiKeyClear?.addEventListener("click", trustedUiHandler(() => armSecretClear($translateApiKey)));
     function syncFormFromConfig() {
       ensureAIProfiles(ui.config.ai || (ui.config.ai = {}));
       refreshProfileSelect();
@@ -5376,10 +5430,40 @@
         ui.toast("时间点格式应为 HH:mm，例如 10:00, 14:30", 3e3);
         return;
       }
+      const nextProfileEndpoint = String($baseUrl.value || "").trim() || p.baseUrl || "";
+      const nextOcrEndpoint = String($ocrApi.value || "").trim();
+      const nextTranslateEndpoint = String($translateApi.value || "").trim();
+      if (needsSecretReentry({
+        currentEndpoint: p.baseUrl,
+        nextEndpoint: nextProfileEndpoint,
+        currentSecret: p.apiKey,
+        input: $api
+      })) {
+        ui.toast("修改 AI API URL 时必须重新输入 API Key，以确认新的密钥绑定", 4e3);
+        return;
+      }
+      if (needsSecretReentry({
+        currentEndpoint: ai.ocrApi || p.baseUrl,
+        nextEndpoint: nextOcrEndpoint || nextProfileEndpoint,
+        currentSecret: ai.ocrApiKey,
+        input: $ocrApiKey
+      })) {
+        ui.toast("修改 OCR API URL 时必须重新输入 OCR API Key", 4e3);
+        return;
+      }
+      if (needsSecretReentry({
+        currentEndpoint: ai.translateApi || p.baseUrl,
+        nextEndpoint: nextTranslateEndpoint || nextProfileEndpoint,
+        currentSecret: ai.translateApiKey,
+        input: $translateApiKey
+      })) {
+        ui.toast("修改翻译 API URL 时必须重新输入翻译 API Key", 4e3);
+        return;
+      }
       const profileResult = applyProfileForm(p, {
         name: $profileName.value,
-        baseUrl: $baseUrl.value,
-        apiKey: $api.value,
+        baseUrl: nextProfileEndpoint,
+        apiKey: readSecretField($api, p.apiKey),
         model: $model.value,
         visionModel: $visionModel.value,
         temperature: $temperature.value
@@ -5389,9 +5473,9 @@
         return;
       }
       ai.ocrApi = $ocrApi.value.trim();
-      ai.ocrApiKey = $ocrApiKey.value.trim();
+      ai.ocrApiKey = readSecretField($ocrApiKey, ai.ocrApiKey);
       ai.translateApi = $translateApi.value.trim();
-      ai.translateApiKey = $translateApiKey.value.trim();
+      ai.translateApiKey = readSecretField($translateApiKey, ai.translateApiKey);
       ai.translateModel = $translateModel.value.trim();
       const curOpt = $profileSelect.querySelector(`option[value="${p.id}"]`);
       if (curOpt) curOpt.textContent = p.name || p.id;
@@ -5421,6 +5505,9 @@
       ui.config.autoFollowDanmu = !!$autoFollowDanmu.checked;
       ui.config.keepScreenAwake = !!$keepScreenAwake.checked;
       ui.saveConfig();
+      syncSecretField($api, !!p.apiKey, "输入当前配置的 API Key");
+      syncSecretField($ocrApiKey, !!ai.ocrApiKey, "留空则复用当前 AI Profile 的 API Key");
+      syncSecretField($translateApiKey, !!ai.translateApiKey, "留空则复用当前 AI Profile 的 API Key");
       document.getElementById("ykt-btn-bell")?.classList.toggle("active", ui.config.notifyProblems);
       ui.updateAutoAnswerBtn();
       const wakeLockStatus = await screenWakeLock.setEnabled(ui.config.keepScreenAwake);
@@ -6375,6 +6462,7 @@
   const ocrResults = new Map;
   const translationResults = new Map;
   let currentResultMode = "original";
+  let staticDomObserverInstalled = false;
   function findSlideAcrossPresentations(idStr) {
     for (const [, pres] of repo.presentations) {
       const arr = pres?.slides || [];
@@ -6879,8 +6967,8 @@
     } catch (e) {
       W$1("[static-report] 检测/注入失败：", e);
     }
-    if (!window.__ykt_static_dom_mo) {
-      window.__ykt_static_dom_mo = true;
+    if (!staticDomObserverInstalled) {
+      staticDomObserverInstalled = true;
       let times = 0;
       const mo = new MutationObserver(() => {
         if (!isStudentLessonReportPage()) return;
@@ -6993,7 +7081,7 @@
           const pid = s.problem.problemId;
           const status = repo.problemStatus.get(pid);
           if (status) thumb.classList.add("unlocked");
-          if (s.problem.result) thumb.classList.add("answered");
+          if (hasSubmittedAnswer(s.problem.result)) thumb.classList.add("answered");
         }
         thumb.addEventListener("click", ev => {
           // ===== Ctrl/Cmd 多选：不改变 currentSlideId，不触发导航，仅切换 selected =====
@@ -8281,13 +8369,7 @@
     return normalizedPath !== "/" && normalizedPath !== "" && getRuntimeMode(normalizedPath) === "desktop";
   }
   // src/index.js
-    function loadFA() {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css";
-    document.head.appendChild(link);
-  }
-  let periodicReloadTimer = null;
+    let periodicReloadTimer = null;
   function startPeriodicReload(opts = {}) {
     try {
       if (periodicReloadTimer !== null) return periodicReloadTimer;
@@ -8325,7 +8407,7 @@
   function startDesktopRuntime() {
     if (desktopStarted) return;
     desktopStarted = true;
-    loadFA();
+    ensureFontAwesome();
     injectStyles();
     ui._mountAll?.();
     installToolbar();
