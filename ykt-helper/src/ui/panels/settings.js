@@ -179,6 +179,24 @@ export function mountSettingsPanel() {
     input.placeholder = '保存设置后将清除此 Key';
   }
 
+  function normalizedEndpoint(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try { return new URL(raw, window.location?.origin || location.origin).href; }
+    catch { return raw; }
+  }
+
+  function endpointChanged(before, after) {
+    return normalizedEndpoint(before) !== normalizedEndpoint(after);
+  }
+
+  function needsSecretReentry({ currentEndpoint, nextEndpoint, currentSecret, input }) {
+    if (!String(currentSecret || '').trim()) return false;
+    if (!endpointChanged(currentEndpoint, nextEndpoint)) return false;
+    if (input?.dataset?.clearSecret === 'true') return false;
+    return !String(input?.value || '').trim();
+  }
+
   // Profile UI
   function refreshProfileSelect() {
     const ai = ui.config.ai;
@@ -344,9 +362,43 @@ export function mountSettingsPanel() {
       return;
     }
 
+    const nextProfileEndpoint = String($baseUrl.value || '').trim() || p.baseUrl || '';
+    const nextOcrEndpoint = String($ocrApi.value || '').trim();
+    const nextTranslateEndpoint = String($translateApi.value || '').trim();
+
+    if (needsSecretReentry({
+      currentEndpoint: p.baseUrl,
+      nextEndpoint: nextProfileEndpoint,
+      currentSecret: p.apiKey,
+      input: $api,
+    })) {
+      ui.toast('修改 AI API URL 时必须重新输入 API Key，以确认新的密钥绑定', 4000);
+      return;
+    }
+
+    if (needsSecretReentry({
+      currentEndpoint: ai.ocrApi || p.baseUrl,
+      nextEndpoint: nextOcrEndpoint || nextProfileEndpoint,
+      currentSecret: ai.ocrApiKey,
+      input: $ocrApiKey,
+    })) {
+      ui.toast('修改 OCR API URL 时必须重新输入 OCR API Key', 4000);
+      return;
+    }
+
+    if (needsSecretReentry({
+      currentEndpoint: ai.translateApi || p.baseUrl,
+      nextEndpoint: nextTranslateEndpoint || nextProfileEndpoint,
+      currentSecret: ai.translateApiKey,
+      input: $translateApiKey,
+    })) {
+      ui.toast('修改翻译 API URL 时必须重新输入翻译 API Key', 4000);
+      return;
+    }
+
     const profileResult = applyProfileForm(p, {
       name: $profileName.value,
-      baseUrl: $baseUrl.value,
+      baseUrl: nextProfileEndpoint,
       apiKey: readSecretField($api, p.apiKey),
       model: $model.value,
       visionModel: $visionModel.value,
