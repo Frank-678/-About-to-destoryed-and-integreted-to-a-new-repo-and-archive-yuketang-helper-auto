@@ -50,6 +50,24 @@ function makeChatUrl(profile) {
     return assertSafeApiEndpoint(profile.baseUrl);
 }
 
+function sameEndpointOrigin(left, right) {
+  const a = new URL(assertSafeApiEndpoint(left));
+  const b = new URL(assertSafeApiEndpoint(right));
+  return a.origin === b.origin;
+}
+
+function resolveServiceApiKey(label, dedicatedKey, serviceUrl, baseProfile) {
+  const ownKey = String(dedicatedKey || '').trim();
+  if (ownKey) return ownKey;
+  const baseKey = String(baseProfile?.apiKey || '').trim();
+  if (!baseKey) return '';
+  const target = String(serviceUrl || '').trim();
+  if (target && !sameEndpointOrigin(target, baseProfile?.baseUrl)) {
+    throw new Error(`${label} 使用不同 API endpoint 时必须配置专用 API Key`);
+  }
+  return baseKey;
+}
+
 function withProfileTemperature(profile, payload) {
   const { temperature: _legacyTemperature, ...requestPayload } = payload;
   const rawTemperature = profile?.temperature;
@@ -536,7 +554,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 export async function queryOCRVision(imageBase64, aiCfg) {
   const cfg = aiCfg || {};
   const baseProfile = getActiveProfile(cfg);
-  const resolvedApiKey = (cfg.ocrApiKey || '').trim() || baseProfile?.apiKey || '';
+  const resolvedApiKey = resolveServiceApiKey('OCR', cfg.ocrApiKey, cfg.ocrApi, baseProfile);
   if (!baseProfile || !resolvedApiKey) {
     throw new Error('请先在设置中填写可用的 OCR API Key 或 AI API Key');
   }
@@ -595,7 +613,7 @@ export async function queryOCRVision(imageBase64, aiCfg) {
 export async function queryTranslationText(text, targetLanguage, aiCfg) {
   const cfg = aiCfg || {};
   const baseProfile = getActiveProfile(cfg);
-  const resolvedApiKey = (cfg.translateApiKey || '').trim() || baseProfile?.apiKey || '';
+  const resolvedApiKey = resolveServiceApiKey('翻译', cfg.translateApiKey, cfg.translateApi, baseProfile);
   if (!baseProfile || !resolvedApiKey) {
     throw new Error('请先在设置中填写可用的翻译 API Key 或 AI API Key');
   }
