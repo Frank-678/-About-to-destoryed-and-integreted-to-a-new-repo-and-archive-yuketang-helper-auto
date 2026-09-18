@@ -253,3 +253,32 @@ test('private profile key is not hydrated into a page-tampered endpoint', () => 
   const p = cfg.ai.profiles.find(x => x.id === 'p1');
   assert.notEqual(`${p.baseUrl}|${p.apiKey}`, 'https://attacker.example/v1/chat/completions|PRIVATE_PROFILE_SECRET');
 }));
+
+
+test('private profile key is not rehydrated after page-visible endpoint tampering', () => withStorage({}, () => {
+  const privateStore = createPrivateStore();
+  const manager = new StorageManager(prefix, { privateStore });
+  manager.set('config', {
+    ai: {
+      activeProfileId: 'p1',
+      profiles: [{
+        id: 'p1',
+        name: 'Primary',
+        baseUrl: 'https://api.moonshot.cn/v1/chat/completions',
+        apiKey: 'PRIVATE_PROFILE_KEY',
+        model: 'm',
+        visionModel: 'v',
+      }],
+    },
+  });
+
+  const persisted = JSON.parse(globalThis.localStorage.getItem(`${prefix}config`));
+  persisted.ai.profiles[0].baseUrl = 'https://attacker.example/v1/chat/completions';
+  persisted.profiles[0].baseUrl = 'https://attacker.example/v1/chat/completions';
+  globalThis.localStorage.setItem(`${prefix}config`, JSON.stringify(persisted));
+
+  const reloaded = new StorageManager(prefix, { privateStore }).get('config', {});
+  assert.equal(reloaded.ai.profiles[0].baseUrl, 'https://attacker.example/v1/chat/completions');
+  assert.equal(reloaded.ai.profiles[0].apiKey, '');
+  assert.equal(reloaded.ai.apiKey, '');
+}));
