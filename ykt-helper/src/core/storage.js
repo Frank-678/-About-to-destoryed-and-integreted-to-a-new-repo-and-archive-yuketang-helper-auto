@@ -2,6 +2,32 @@ import { normalizeRuntimeConfig } from './config-normalization.js';
 
 const PRIVATE_SECRETS_SUFFIX = 'private-secrets:v1';
 
+const LEGACY_TRUSTED_ENDPOINT_HOSTS = new Set([
+  'api.moonshot.cn',
+  'api.openai.com',
+  'api.deepseek.com',
+  'openrouter.ai',
+  'generativelanguage.googleapis.com',
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '[::1]',
+]);
+
+function canHydrateLegacyUnboundSecret(rawUrl) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return true;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname))) {
+      return false;
+    }
+    return LEGACY_TRUSTED_ENDPOINT_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function clone(value) {
   if (Array.isArray(value)) return value.map(clone);
   if (value && typeof value === 'object') {
@@ -46,16 +72,25 @@ function createGMPrivateStore() {
 function normalizeSecretRecord(value) {
   if (!value || typeof value !== 'object') return null;
   const profileApiKeys = {};
+  const profileEndpoints = {};
   if (value.profileApiKeys && typeof value.profileApiKeys === 'object') {
     for (const [id, apiKey] of Object.entries(value.profileApiKeys)) {
       profileApiKeys[String(id)] = String(apiKey || '');
     }
   }
+  if (value.profileEndpoints && typeof value.profileEndpoints === 'object') {
+    for (const [id, endpoint] of Object.entries(value.profileEndpoints)) {
+      profileEndpoints[String(id)] = String(endpoint || '');
+    }
+  }
   return {
-    version: 1,
+    version: Number(value.version) >= 2 ? 2 : 1,
     profileApiKeys,
+    profileEndpoints,
     ocrApiKey: String(value.ocrApiKey || ''),
+    ocrEndpoint: String(value.ocrEndpoint || ''),
     translateApiKey: String(value.translateApiKey || ''),
+    translateEndpoint: String(value.translateEndpoint || ''),
     legacyKimiApiKey: String(value.legacyKimiApiKey || ''),
   };
 }
@@ -70,17 +105,33 @@ function collectProfileSecrets(target, profiles) {
   }
 }
 
+function collectProfileEndpoints(target, profiles) {
+  if (!Array.isArray(profiles)) return;
+  for (const profile of profiles) {
+    if (!profile || typeof profile !== 'object') continue;
+    const id = String(profile.id ?? '').trim();
+    if (!id) continue;
+    target[id] = String(profile.baseUrl || '');
+  }
+}
+
 function extractSecrets(config, separateLegacyKey = '') {
   const input = config && typeof config === 'object' ? config : {};
   const ai = input.ai && typeof input.ai === 'object' ? input.ai : {};
   const profileApiKeys = {};
+  const profileEndpoints = {};
   collectProfileSecrets(profileApiKeys, input.profiles);
   collectProfileSecrets(profileApiKeys, ai.profiles);
+  collectProfileEndpoints(profileEndpoints, input.profiles);
+  collectProfileEndpoints(profileEndpoints, ai.profiles);
   return {
-    version: 1,
+    version: 2,
     profileApiKeys,
+    profileEndpoints,
     ocrApiKey: String(ai.ocrApiKey || ''),
+    ocrEndpoint: String(ai.ocrApi || ''),
     translateApiKey: String(ai.translateApiKey || ''),
+    translateEndpoint: String(ai.translateApi || ''),
     legacyKimiApiKey: String(ai.kimiApiKey || ai.apiKey || separateLegacyKey || ''),
   };
 }
@@ -98,13 +149,18 @@ function mergeSecretRecords(localSecrets, privateSecrets) {
   const existing = normalizeSecretRecord(privateSecrets);
   if (!existing) return local;
   return {
-    version: 1,
+    version: Math.max(local.version || 1, existing.version || 1),
     profileApiKeys: {
       ...local.profileApiKeys,
       ...existing.profileApiKeys,
     },
+    profileEndpoints: existing.version >= 2
+      ? { ...local.profileEndpoints, ...existing.profileEndpoints }
+      : { ...local.profileEndpoints },
     ocrApiKey: existing.ocrApiKey || local.ocrApiKey,
+    ocrEndpoint: existing.version >= 2 ? (existing.ocrEndpoint || local.ocrEndpoint) : local.ocrEndpoint,
     translateApiKey: existing.translateApiKey || local.translateApiKey,
+    translateEndpoint: existing.version >= 2 ? (existing.translateEndpoint || local.translateEndpoint) : local.translateEndpoint,
     legacyKimiApiKey: existing.legacyKimiApiKey || local.legacyKimiApiKey,
   };
 }
@@ -136,17 +192,38 @@ function hydrateSecrets(config, privateSecrets) {
   const profiles = Array.isArray(hydrated.ai?.profiles) ? hydrated.ai.profiles : [];
   for (const profile of profiles) {
     const id = String(profile?.id ?? '').trim();
-    if (id && Object.prototype.hasOwnProperty.call(secrets.profileApiKeys, id)) {
-      profile.apiKey = secrets.profileApiKeys[id];
+    if (!id || !Object.prototype.hasOwnProperty.call(secrets.profileApiKeys, id)) continue;
+    const privateKey = secrets.profileApiKeys[id];
+    const boundEndpoint = String(secrets.profileEndpoints?.[id] || '').trim();
+    if (boundEndpoint) {
+      profile.baseUrl = boundEndpoint;
+      profile.apiKey = privateKey;
+    } else if (secrets.version < 2 && canHydrateLegacyUnboundSecret(profile.baseUrl)) {
+      profile.apiKey = privateKey;
+    } else {
+      profile.apiKey = '';
     }
   }
   if (hydrated.ai && typeof hydrated.ai === 'object') {
-    hydrated.ai.ocrApiKey = secrets.ocrApiKey;
-    hydrated.ai.translateApiKey = secrets.translateApiKey;
+    if (secrets.version >= 2) {
+      hydrated.ai.ocrApi = secrets.ocrEndpoint;
+      hydrated.ai.translateApi = secrets.translateEndpoint;
+      hydrated.ai.ocrApiKey = secrets.ocrApiKey;
+      hydrated.ai.translateApiKey = secrets.translateApiKey;
+    } else {
+      const localOcrEndpoint = String(hydrated.ai.ocrApi || '').trim();
+      const localTranslateEndpoint = String(hydrated.ai.translateApi || '').trim();
+      hydrated.ai.ocrApiKey = (!localOcrEndpoint || canHydrateLegacyUnboundSecret(localOcrEndpoint))
+        ? secrets.ocrApiKey
+        : '';
+      hydrated.ai.translateApiKey = (!localTranslateEndpoint || canHydrateLegacyUnboundSecret(localTranslateEndpoint))
+        ? secrets.translateApiKey
+        : '';
+    }
     const active = profiles.find(profile => String(profile?.id) === String(hydrated.ai.activeProfileId)) || profiles[0];
     const activeKey = String(active?.apiKey || '');
-    hydrated.ai.kimiApiKey = secrets.legacyKimiApiKey || activeKey;
-    hydrated.ai.apiKey = activeKey || secrets.legacyKimiApiKey;
+    hydrated.ai.kimiApiKey = activeKey || (canHydrateLegacyUnboundSecret(active?.baseUrl) ? secrets.legacyKimiApiKey : '');
+    hydrated.ai.apiKey = activeKey || '';
   }
   hydrated.profiles = clone(profiles);
   hydrated.activeProfileId = hydrated.ai?.activeProfileId || hydrated.activeProfileId;
