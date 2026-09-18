@@ -102,3 +102,20 @@ test('bundle does not dynamically inject remote JavaScript tags at runtime', () 
   assert.doesNotMatch(text, /document\.createElement\(["']script["']\)/);
   assert.doesNotMatch(text, /Failed to load:\s*\$\{src\}/);
 });
+
+
+test('metadata declares Tampermonkey connect permissions for built-in and custom AI endpoints', () => {
+  const text = bundle();
+  for (const domain of [
+    'api.moonshot.cn',
+    'api.openai.com',
+    'api.deepseek.com',
+    'openrouter.ai',
+    'generativelanguage.googleapis.com',
+    'localhost',
+    '127.0.0.1',
+  ]) {
+    assert.match(text, new RegExp('^// @connect\\s+' + domain.replaceAll('.', '\\.') + '$', 'm'));
+  }
+  assert.match(text, /^\/\/ @connect\s+\*$/m);
+});
