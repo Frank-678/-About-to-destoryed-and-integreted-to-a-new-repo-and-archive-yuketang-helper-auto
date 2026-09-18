@@ -109,6 +109,19 @@ const VISION_GUIDE = [
   'C. 否则参考用户输入回答',
 ].join('\n');
 
+const DEFAULT_AI_REQUEST_TIMEOUT_MS = 120000;
+
+function resolveAIRequestTimeout(aiCfg, override) {
+  const raw = override ?? aiCfg?.requestTimeoutMs ?? DEFAULT_AI_REQUEST_TIMEOUT_MS;
+  const timeout = Number(raw);
+  if (!Number.isFinite(timeout) || timeout <= 0) return DEFAULT_AI_REQUEST_TIMEOUT_MS;
+  return Math.max(10000, Math.min(300000, timeout));
+}
+
+function isAITimeoutError(error) {
+  return /超时|timeout/i.test(String(error?.message || error || ''));
+}
+
 
 
 /**
@@ -122,6 +135,7 @@ export async function queryAI(question, aiCfg, options = {}) {
 
   const url = makeChatUrl(profile);
   const model = profile.model || 'gpt-4o-mini'; // 默认给一个合理值
+  const timeoutMs = resolveAIRequestTimeout(aiCfg, options?.timeout);
 
   return new Promise((resolve, reject) => {
     gm.xhr({
@@ -169,13 +183,13 @@ export async function queryAI(question, aiCfg, options = {}) {
       },
       onerror: () => reject(new Error('网络请求失败')),
       ontimeout: () => reject(new Error('AI 请求超时')),
-      timeout: 30000,
+      timeout: timeoutMs,
     });
   });
 }
 
 // 通用 OpenAI 协议聊天请求封装（用于 Vision 两步调用）
-function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs = 60000) {
+function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs = DEFAULT_AI_REQUEST_TIMEOUT_MS) {
   const url = makeChatUrl(profile);
 
   return new Promise((resolve, reject) => {
@@ -231,7 +245,7 @@ function chatCompletion(profile, payload, debugLabel = '[AI OpenAI]', timeoutMs 
 
 async function singleStepVisionCall(profile, cleanBase64List, textPrompt, options = {}) {
   const visionModel = profile.visionModel || profile.model;
-  const timeoutMs = options.timeout || 60000;
+  const timeoutMs = resolveAIRequestTimeout(null, options.timeout);
 
   const visionTextHeader = [
     '【融合模式说明】你将看到一张课件/PPT截图与可选的附加文本。',
@@ -290,10 +304,11 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
   const {
     disableTwoStep = false,
     twoStepDebug = false,
-    timeout: timeoutMs = 60000,
+    timeout = undefined,
     problemType = null,          // ← 新增：后端题型（数字或字符串都行）
     profileId = null,
   } = options || {};
+  const timeoutMs = resolveAIRequestTimeout(aiCfg, timeout);
 
   const profile = getActiveProfile(aiCfg, profileId);
   if (!profile || !profile.apiKey) {
@@ -421,6 +436,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
 
     structuredQuestion = JSON.parse(jsonMatch[0]);
   } catch (err) {
+    if (isAITimeoutError(err)) throw err;
     console.warn('[雨课堂助手][WARN][vision-step1] failed, fallback to single-step', err);
     return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
@@ -546,6 +562,7 @@ export async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}
     }
     return content2;
   } catch (err) {
+    if (isAITimeoutError(err)) throw err;
     console.warn('[雨课堂助手][WARN][vision-step2] failed, fallback to single-step', err);
     return singleStepVisionCall(profile, cleanBase64List, textPrompt, { timeout: timeoutMs });
   }
