@@ -25,8 +25,6 @@ for (const file of files) {
     process.execPath,
     [
       '--import', './test/support/register-raw-loader.mjs',
-      '--test',
-      '--test-isolation=none',
       file,
     ],
     {
