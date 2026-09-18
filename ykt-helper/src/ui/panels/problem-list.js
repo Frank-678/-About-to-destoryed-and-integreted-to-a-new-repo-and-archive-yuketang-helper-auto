@@ -5,6 +5,7 @@ import { actions } from '../../state/actions.js';
 import { submitAnswer } from '../../tsm/answer.js';
 import { createKeyedActionLock } from '../../core/action-lock.js';
 import { getFiniteDeadline, isProblemAnswered, isProblemExpired } from '../../core/problem-view-state.js';
+import { emitInternalEvent, onInternalEvent } from '../../core/internal-events.js';
 
 const L = (...a) => console.log('[雨课堂助手][DBG][problem-list]', ...a);
 const W = (...a) => console.warn('[雨课堂助手][WARN][problem-list]', ...a);
@@ -196,14 +197,12 @@ function bindRowActions(row, e, prob){
     const presId = e.presentationId || prob?.presentationId;
     const slideId = (e.slide?.id || e.slideId || prob?.slideId);
     if (slideId) {
-      window.dispatchEvent(new CustomEvent('ykt:ask-ai-for-slide', {
-        detail: {
-          slideId: String(slideId),
-          imageUrl: repo.slides.get(String(slideId))?.image || repo.slides.get(String(slideId))?.thumbnail || ''
-        }
-      }));
+      emitInternalEvent('ask-ai-for-slide', {
+        slideId: String(slideId),
+        imageUrl: repo.slides.get(String(slideId))?.image || repo.slides.get(String(slideId))?.thumbnail || ''
+      });
     }
-    window.dispatchEvent(new CustomEvent('ykt:open-ai', { detail:{ problemId: e.problemId } }));
+    emitInternalEvent('open-ai', { problemId: e.problemId });
   };
   actionsBar.appendChild(btnAI);
 
@@ -397,7 +396,7 @@ export function mountProblemListPanel() {
   root = document.getElementById('ykt-problem-list-panel');
 
   $('#ykt-problem-list-close')?.addEventListener('click', () => showProblemListPanel(false));
-  window.addEventListener('ykt:open-problem-list', () => showProblemListPanel(true));
+  onInternalEvent('open-problem-list', () => showProblemListPanel(true));
 
   mounted = true;
 
