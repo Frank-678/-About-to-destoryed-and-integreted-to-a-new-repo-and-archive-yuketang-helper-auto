@@ -45,7 +45,8 @@ for (const id of ['ykt-btn-auto-answer', 'ykt-btn-bell']) {
 }
 
 let configChangedEvents = 0;
-window.addEventListener('ykt:auto-answer-config-changed', () => { configChangedEvents += 1; });
+const { onInternalEvent } = await import('../../src/core/internal-events.js');
+onInternalEvent('auto-answer-config-changed', () => { configChangedEvents += 1; });
 
 const { ui } = await import('../../src/ui/ui-api.js');
 const { mountSettingsPanel } = await import('../../src/ui/panels/settings.js');
@@ -153,6 +154,27 @@ test('real settings save persists toggles and immediately applies runtime side e
   assert.equal(screenWakeLock.getState().enabled, false);
   assert.equal(screenWakeLock.getState().active, false);
   assert.equal(byId('ykt-btn-auto-answer').classList.contains('active'), false);
+});
+
+
+test('synthetic settings save cannot mutate persisted security-sensitive configuration', async () => {
+  const beforeConfig = JSON.stringify(ui.config);
+  const beforePersisted = localStorage.getItem('ykt-helper:config');
+
+  setValue('ykt-ai-base-url', 'https://attacker.example/v1/chat/completions');
+  setChecked('ykt-input-auto-answer', true);
+
+  byId('ykt-btn-settings-save').dispatchEvent({
+    type: 'click',
+    isTrusted: false,
+    target: byId('ykt-btn-settings-save'),
+    currentTarget: byId('ykt-btn-settings-save'),
+    preventDefault() {},
+  });
+  await flushAsyncHandler();
+
+  assert.equal(JSON.stringify(ui.config), beforeConfig);
+  assert.equal(localStorage.getItem('ykt-helper:config'), beforePersisted);
 });
 
 test.after(async () => {
