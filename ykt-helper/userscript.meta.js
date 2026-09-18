@@ -52,8 +52,8 @@ export const meta = `
 // @connect      127.0.0.1
 // @connect      *
 // @run-at       document-start
-// @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
-// @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
-// @require      https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.min.js
+// @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js#sha256=6H5VB5QyLldKH9oMFUmjxw2uWpPZETQXpCkBaDjquMs=
+// @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js#sha256=mMzxeqEMILsTAXYmGPzJtqs6Tn8mtgcdZNC0EVTfOHU=
+// @require      https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.min.js#sha256=5FOQtjyN31BBQmvTsCf1iypgSa37N8n+8Kyn81mgUxg=
 // ==/UserScript==
 `;
