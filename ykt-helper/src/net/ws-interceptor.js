@@ -4,6 +4,7 @@ import { runtimeActionRef } from '../core/runtime-dispatch.js';
 import { repo } from '../state/repo.js';
 import { dispatchRealtimeMessage } from '../core/realtime-dispatch.js';
 import { confirmDanmuSend } from '../core/danmu-sender.js';
+import { isYuketangHostname } from '../core/yuketang-origin.js';
 
 // connectOrAttachLessonWS constructs a managed socket synchronously. During
 // that constructor call, do not mistake the current page route for a native
@@ -63,6 +64,11 @@ MyWebSocket.addHandler((ws, url) => {
     const envType = detectEnvironmentAndAdaptAPI();
     console.log('[雨课堂助手][INFO] 拦截WebSocket通信 - 环境:', envType);
     console.log('[雨课堂助手][INFO] WebSocket连接尝试:', url.href);
+
+    if (!isYuketangHostname(url.hostname)) {
+      console.log('[雨课堂助手][INFO] 忽略外部 WebSocket:', url.hostname);
+      return;
+    }
 
     // 更宽松的路径匹配
     const wsPath = url.pathname || '';
