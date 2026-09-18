@@ -8,6 +8,7 @@ import { actions, hasActiveAIProfile} from '../../state/actions.js'
 import { parseEditableAnswer, formatEditableAnswer } from '../../state/answer-editor.js';
 import { getCurrentMainPageSlideId, waitForVueReady, watchMainPageChange } from '../../core/vuex-helper.js';
 import { isProblemExpired } from '../../core/problem-view-state.js';
+import { onInternalEvent } from '../../core/internal-events.js';
 
 const L = (...a) => console.log('[雨课堂助手][DBG][ai]', ...a);
 const W = (...a) => console.warn('[雨课堂助手][WARN][ai]', ...a);
@@ -277,7 +278,7 @@ export function mountAIPanel() {
     W('Vue 实例初始化失败，将使用备用方案:', e);
   });
 
-  window.addEventListener('ykt:presentation:slide-selected', (ev) => {
+  onInternalEvent('presentation:slide-selected', (ev) => {
     L('收到小窗选页事件', ev?.detail);
     const sid = asIdStr(ev?.detail?.slideId);
     const imageUrl = ev?.detail?.imageUrl || null;
@@ -288,12 +289,12 @@ export function mountAIPanel() {
     renderQuestion();
   });
 
-  window.addEventListener('ykt:open-ai', () => {
+  onInternalEvent('open-ai', () => {
     L('收到打开 AI 面板事件');
     showAIPanel(true);
   });
 
-  window.addEventListener('ykt:ask-ai-for-slide', (ev) => {
+  onInternalEvent('ask-ai-for-slide', (ev) => {
     const detail = ev?.detail || {};
     const slideId = asIdStr(detail.slideId);
     const imageUrl = detail.imageUrl || '';
@@ -313,7 +314,7 @@ export function mountAIPanel() {
   });
 
   // ===== 手动多页提问（来自课件面板多选）=====
-  window.addEventListener('ykt:ask-ai-for-slides', (ev) => {
+  onInternalEvent('ask-ai-for-slides', (ev) => {
     const detail = ev?.detail || {};
     const slides = Array.isArray(detail.slides) ? detail.slides : [];
     if (!slides.length) return;
