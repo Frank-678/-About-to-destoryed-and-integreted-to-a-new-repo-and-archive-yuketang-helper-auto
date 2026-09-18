@@ -198,12 +198,19 @@ test('AI profile id selected by runner is forwarded to vision request', async ()
   assert.equal(seenOptions.problemType, 2);
 });
 
-test('no active AI profile uses explicit default fallback and still submits once', async () => {
-  const { runner, calls } = harness({ hasActiveProfile: () => false, makeDefaultAnswer: () => ['D'] });
-  const result = await runner.run(problem(), status(), { lessonId: 'l1' });
-  assert.equal(result.ok, true);
+test('no active AI profile fails closed and never submits a fabricated answer', async () => {
+  const { runner, calls, events } = harness({ hasActiveProfile: () => false });
+  const s = status();
+  const result = await runner.run(problem(), s, { lessonId: 'l1' });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'error');
   assert.equal(calls.query, 0);
-  assert.deepEqual(calls.lastSubmit.answer, ['D']);
+  assert.equal(calls.submit, 0);
+  assert.equal(s.phase, 'failed');
+  assert.equal(s.answering, false);
+  assert.match(s.lastError, /AI|Profile|API Key|配置/i);
+  assert.ok(events.some(event => event.type === 'auto-answer-failed'));
 });
 
 test('verification same/unavailable does not create a second submission', async () => {
