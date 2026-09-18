@@ -1,0 +1,83 @@
+name: Final Independent Remediation Audit
+
+on:
+  push:
+    branches:
+      - fix/independent-audit-remediation-20260917
+    paths:
+      - '.github/workflows/final-independent-remediation-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  regression-security:
+    name: Regression, fault injection, supply chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:all
+      - run: node --test test/audit/*.audit.test.mjs
+      - run: npm run build
+      - run: npm run test:build
+      - run: npm audit --audit-level=high
+      - name: Syntax, architecture and circular graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do node --check "$file"; done < <(find src -type f -name '*.js' -print0)
+          ! grep -REn "from ['\"]\.\./state/actions\.js['\"]" src/net
+          ! grep -REn '(^|[^A-Za-z0-9_$])(eval|Function)[[:space:]]*\(' src
+          npx --yes madge@8.0.0 --circular --extensions js src/index.js
+
+  browser-blackbox:
+    name: Fresh Chromium userscript black-box
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: ykt-helper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ykt-helper/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.55.0
+      - run: npx playwright install --with-deps chromium
+      - name: Run final black-box
+        env:
+          BLACKBOX_ARTIFACT: dist/ykt-helper-1216.user.js
+          BLACKBOX_EXPECTED_VERSION: 1.21.6
+        run: node test/blackbox/userscript-blackbox.mjs
+
+  codeql:
+    name: CodeQL JavaScript security-and-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'
