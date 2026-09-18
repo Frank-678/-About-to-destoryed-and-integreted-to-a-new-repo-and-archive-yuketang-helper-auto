@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（JS版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.21.6.6
+// @version      1.21.6.7
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -40,10 +40,18 @@
 // @grant        GM_getTabs
 // @grant        GM_saveTab
 // @grant        unsafeWindow
+// @connect      api.moonshot.cn
+// @connect      api.openai.com
+// @connect      api.deepseek.com
+// @connect      openrouter.ai
+// @connect      generativelanguage.googleapis.com
+// @connect      localhost
+// @connect      127.0.0.1
+// @connect      *
 // @run-at       document-start
-// @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
-// @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
-// @require      https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.min.js
+// @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js#sha256=6H5VB5QyLldKH9oMFUmjxw2uWpPZETQXpCkBaDjquMs=
+// @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js#sha256=mMzxeqEMILsTAXYmGPzJtqs6Tn8mtgcdZNC0EVTfOHU=
+// @require      https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.min.js#sha256=5FOQtjyN31BBQmvTsCf1iypgSa37N8n+8Kyn81mgUxg=
 // ==/UserScript==
 (function() {
   "use strict";
@@ -280,6 +288,7 @@
       translateApi: "",
       translateApiKey: "",
       translateModel: "",
+      requestTimeoutMs: 12e4,
       maxTokens: 1e3
     },
     profiles: [ {
@@ -353,6 +362,19 @@
     };
   }
   const PRIVATE_SECRETS_SUFFIX = "private-secrets:v1";
+  const DEFAULT_LEGACY_PROFILE_ENDPOINT = "https://api.moonshot.cn/v1/chat/completions";
+  const LEGACY_TRUSTED_ENDPOINT_HOSTS = new Set([ "api.moonshot.cn", "api.openai.com", "api.deepseek.com", "openrouter.ai", "generativelanguage.googleapis.com", "localhost", "127.0.0.1", "::1", "[::1]" ]);
+  function canHydrateLegacyUnboundSecret(rawUrl) {
+    const raw = String(rawUrl || "").trim();
+    if (!raw) return true;
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "https:" && !(url.protocol === "http:" && [ "localhost", "127.0.0.1", "::1", "[::1]" ].includes(url.hostname))) return false;
+      return LEGACY_TRUSTED_ENDPOINT_HOSTS.has(url.hostname);
+    } catch {
+      return false;
+    }
+  }
   function clone(value) {
     if (Array.isArray(value)) return value.map(clone);
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [ key, clone(item) ]));
@@ -390,12 +412,17 @@
   function normalizeSecretRecord(value) {
     if (!value || typeof value !== "object") return null;
     const profileApiKeys = {};
+    const profileEndpoints = {};
     if (value.profileApiKeys && typeof value.profileApiKeys === "object") for (const [id, apiKey] of Object.entries(value.profileApiKeys)) profileApiKeys[String(id)] = String(apiKey || "");
+    if (value.profileEndpoints && typeof value.profileEndpoints === "object") for (const [id, endpoint] of Object.entries(value.profileEndpoints)) profileEndpoints[String(id)] = String(endpoint || "");
     return {
-      version: 1,
+      version: Number(value.version) >= 2 ? 2 : 1,
       profileApiKeys: profileApiKeys,
+      profileEndpoints: profileEndpoints,
       ocrApiKey: String(value.ocrApiKey || ""),
+      ocrEndpoint: String(value.ocrEndpoint || ""),
       translateApiKey: String(value.translateApiKey || ""),
+      translateEndpoint: String(value.translateEndpoint || ""),
       legacyKimiApiKey: String(value.legacyKimiApiKey || "")
     };
   }
@@ -408,17 +435,32 @@
       target[id] = String(profile.apiKey || "");
     }
   }
+  function collectProfileEndpoints(target, profiles) {
+    if (!Array.isArray(profiles)) return;
+    for (const profile of profiles) {
+      if (!profile || typeof profile !== "object") continue;
+      const id = String(profile.id ?? "").trim();
+      if (!id) continue;
+      target[id] = String(profile.baseUrl || DEFAULT_LEGACY_PROFILE_ENDPOINT);
+    }
+  }
   function extractSecrets(config, separateLegacyKey = "") {
     const input = config && typeof config === "object" ? config : {};
     const ai = input.ai && typeof input.ai === "object" ? input.ai : {};
     const profileApiKeys = {};
+    const profileEndpoints = {};
     collectProfileSecrets(profileApiKeys, input.profiles);
     collectProfileSecrets(profileApiKeys, ai.profiles);
+    collectProfileEndpoints(profileEndpoints, input.profiles);
+    collectProfileEndpoints(profileEndpoints, ai.profiles);
     return {
-      version: 1,
+      version: 2,
       profileApiKeys: profileApiKeys,
+      profileEndpoints: profileEndpoints,
       ocrApiKey: String(ai.ocrApiKey || ""),
+      ocrEndpoint: String(ai.ocrApi || ""),
       translateApiKey: String(ai.translateApiKey || ""),
+      translateEndpoint: String(ai.translateApi || ""),
       legacyKimiApiKey: String(ai.kimiApiKey || ai.apiKey || separateLegacyKey || "")
     };
   }
@@ -431,13 +473,21 @@
     const existing = normalizeSecretRecord(privateSecrets);
     if (!existing) return local;
     return {
-      version: 1,
+      version: Math.max(local.version || 1, existing.version || 1),
       profileApiKeys: {
         ...local.profileApiKeys,
         ...existing.profileApiKeys
       },
+      profileEndpoints: existing.version >= 2 ? {
+        ...local.profileEndpoints,
+        ...existing.profileEndpoints
+      } : {
+        ...local.profileEndpoints
+      },
       ocrApiKey: existing.ocrApiKey || local.ocrApiKey,
+      ocrEndpoint: existing.version >= 2 ? existing.ocrEndpoint || local.ocrEndpoint : local.ocrEndpoint,
       translateApiKey: existing.translateApiKey || local.translateApiKey,
+      translateEndpoint: existing.version >= 2 ? existing.translateEndpoint || local.translateEndpoint : local.translateEndpoint,
       legacyKimiApiKey: existing.legacyKimiApiKey || local.legacyKimiApiKey
     };
   }
@@ -464,15 +514,30 @@
     const profiles = Array.isArray(hydrated.ai?.profiles) ? hydrated.ai.profiles : [];
     for (const profile of profiles) {
       const id = String(profile?.id ?? "").trim();
-      if (id && Object.prototype.hasOwnProperty.call(secrets.profileApiKeys, id)) profile.apiKey = secrets.profileApiKeys[id];
+      if (!id || !Object.prototype.hasOwnProperty.call(secrets.profileApiKeys, id)) continue;
+      const privateKey = secrets.profileApiKeys[id];
+      const boundEndpoint = String(secrets.profileEndpoints?.[id] || "").trim();
+      if (boundEndpoint) {
+        profile.baseUrl = boundEndpoint;
+        profile.apiKey = privateKey;
+      } else if (secrets.version < 2 && canHydrateLegacyUnboundSecret(profile.baseUrl)) profile.apiKey = privateKey; else profile.apiKey = "";
     }
     if (hydrated.ai && typeof hydrated.ai === "object") {
-      hydrated.ai.ocrApiKey = secrets.ocrApiKey;
-      hydrated.ai.translateApiKey = secrets.translateApiKey;
+      if (secrets.version >= 2) {
+        hydrated.ai.ocrApi = secrets.ocrEndpoint;
+        hydrated.ai.translateApi = secrets.translateEndpoint;
+        hydrated.ai.ocrApiKey = secrets.ocrApiKey;
+        hydrated.ai.translateApiKey = secrets.translateApiKey;
+      } else {
+        const localOcrEndpoint = String(hydrated.ai.ocrApi || "").trim();
+        const localTranslateEndpoint = String(hydrated.ai.translateApi || "").trim();
+        hydrated.ai.ocrApiKey = !localOcrEndpoint || canHydrateLegacyUnboundSecret(localOcrEndpoint) ? secrets.ocrApiKey : "";
+        hydrated.ai.translateApiKey = !localTranslateEndpoint || canHydrateLegacyUnboundSecret(localTranslateEndpoint) ? secrets.translateApiKey : "";
+      }
       const active = profiles.find(profile => String(profile?.id) === String(hydrated.ai.activeProfileId)) || profiles[0];
       const activeKey = String(active?.apiKey || "");
-      hydrated.ai.kimiApiKey = secrets.legacyKimiApiKey || activeKey;
-      hydrated.ai.apiKey = activeKey || secrets.legacyKimiApiKey;
+      hydrated.ai.kimiApiKey = activeKey || (canHydrateLegacyUnboundSecret(active?.baseUrl) ? secrets.legacyKimiApiKey : "");
+      hydrated.ai.apiKey = activeKey || "";
     }
     hydrated.profiles = clone(profiles);
     hydrated.activeProfileId = hydrated.ai?.activeProfileId || hydrated.activeProfileId;
@@ -548,18 +613,24 @@
       return runtimeConfig;
     }
     set(key, value) {
-      if (key === "config" && this._privateAvailable()) {
-        const secrets = extractSecrets(value);
-        if (!this._writePrivateSecrets(secrets)) throw new Error("private secret storage unavailable");
-        this._persistSanitizedConfig(value);
-        return;
+      if (key === "config") {
+        if (this._privateAvailable()) {
+          const secrets = extractSecrets(value);
+          if (!this._writePrivateSecrets(secrets)) throw new Error("private secret storage unavailable");
+          this._persistSanitizedConfig(value);
+          return;
+        }
+        if (hasSecretMaterial(value)) throw new Error("private secret storage unavailable; refusing to persist credentials to localStorage");
       }
-      if (key === "kimiApiKey" && this._privateAvailable()) {
-        const current = this._readPrivateSecrets() || extractSecrets({});
-        current.legacyKimiApiKey = String(value || "");
-        if (!this._writePrivateSecrets(current)) throw new Error("private secret storage unavailable");
-        this._removeLocalLegacyKey();
-        return;
+      if (key === "kimiApiKey") {
+        if (this._privateAvailable()) {
+          const current = this._readPrivateSecrets() || extractSecrets({});
+          current.legacyKimiApiKey = String(value || "");
+          if (!this._writePrivateSecrets(current)) throw new Error("private secret storage unavailable");
+          this._removeLocalLegacyKey();
+          return;
+        }
+        if (String(value || "")) throw new Error("private secret storage unavailable; refusing to persist credentials to localStorage");
       }
       localStorage.setItem(this.prefix + key, JSON.stringify(value));
     }
@@ -1123,6 +1194,18 @@
       };
     }
   }
+  function isYuketangHostname(hostname) {
+    const host = String(hostname || "").trim().toLowerCase().replace(/\.$/, "");
+    return host === "yuketang.cn" || host.endsWith(".yuketang.cn");
+  }
+  function isYuketangUrl(input, baseHref = globalThis.location?.href || "https://www.yuketang.cn/") {
+    try {
+      const url = input instanceof URL ? input : new URL(String(input || ""), baseHref);
+      return isYuketangHostname(url.hostname);
+    } catch {
+      return false;
+    }
+  }
   // src/net/ws-interceptor.js
   // connectOrAttachLessonWS constructs a managed socket synchronously. During
   // that constructor call, do not mistake the current page route for a native
@@ -1184,6 +1267,10 @@
       const envType = detectEnvironmentAndAdaptAPI();
       console.log("[雨课堂助手][INFO] 拦截WebSocket通信 - 环境:", envType);
       console.log("[雨课堂助手][INFO] WebSocket连接尝试:", url.href);
+      if (!isYuketangHostname(url.hostname)) {
+        console.log("[雨课堂助手][INFO] 忽略外部 WebSocket:", url.hostname);
+        return;
+      }
       // 更宽松的路径匹配
             const wsPath = url.pathname || "";
       const isRainClassroomWS = wsPath === "/wsapp/" || wsPath.includes("/ws") || wsPath.includes("/websocket") || url.href.includes("websocket");
@@ -1400,6 +1487,7 @@
       return "unknown";
     }
     MyXHR.addHandler((xhr, method, url) => {
+      if (!isYuketangHostname(url.hostname)) return;
       detectEnvironmentAndAdaptAPI();
       const pathname = url.pathname || "";
       console.log("[雨课堂助手][INFO] XHR请求:", method, pathname, url.search);
@@ -1639,12 +1727,13 @@
     window.fetch = async function(...args) {
       const [input, init] = args;
       const url = typeof input === "string" ? input : input?.url || "";
+      const trustedYuketangRequest = isYuketangUrl(url, window.location?.href || location.href);
       // === (1) 打印调试日志，可观察哪些接口走 fetch ===
             if (url.includes("lesson") || url.includes("slide") || url.includes("problem")) console.log("[雨课堂助手][INFO][fetch-interceptor] 捕获请求:", url);
       const resp = await rawFetch.apply(this, args);
       try {
         // === (2) 只拦截 Rain Classroom 的 JSON 接口 ===
-        if (url.includes("/lesson") || url.includes("/presentation") || url.includes("/slides") || url.includes("/problem")) {
+        if (trustedYuketangRequest && (url.includes("/lesson") || url.includes("/presentation") || url.includes("/slides") || url.includes("/problem"))) {
           const cloned = resp.clone();
           const text = await cloned.text();
           // 这里不能直接 resp.json()，否则流会被消费；必须 clone()
@@ -1688,6 +1777,26 @@
       setTimeout(() => el.remove(), 500);
     }, duration);
   }
+  const listeners = new Map;
+  function onInternalEvent(type, handler) {
+    if (typeof handler !== "function") return () => {};
+    const key = String(type || "");
+    if (!listeners.has(key)) listeners.set(key, new Set);
+    listeners.get(key).add(handler);
+    return () => listeners.get(key)?.delete(handler);
+  }
+  function emitInternalEvent(type, detail = void 0) {
+    const key = String(type || "");
+    const event = {
+      type: key,
+      detail: detail
+    };
+    for (const handler of [ ...listeners.get(key) || [] ]) try {
+      handler(event);
+    } catch (error) {
+      console.warn("[雨课堂助手][WARN][internal-events] listener failed", key, error);
+    }
+  }
   const config = storage.get("config", {});
   config.TYPE_MAP = config.TYPE_MAP || PROBLEM_TYPE_MAP;
   function saveConfig() {
@@ -1697,7 +1806,7 @@
         autoJoinEnabled: !!this.config.autoJoinEnabled,
         autoAnswerOnAutoJoin: !!this.config.autoAnswerOnAutoJoin
       });
-      if (typeof window !== "undefined") window.dispatchEvent?.(new CustomEvent("ykt:auto-answer-config-changed"));
+      emitInternalEvent("auto-answer-config-changed");
     } catch (error) {
       console.warn("[ui.saveConfig] failed", error);
     }
@@ -1715,6 +1824,17 @@
     saveConfig: saveConfig,
     toast: toast
   };
+  function isTrustedUiEvent(event) {
+    // Real browser-generated events have isTrusted=true; synthetic DOM events have false.
+    // Tests and direct internal calls may omit the property entirely.
+    return !event || event.isTrusted !== false;
+  }
+  function trustedUiHandler(handler) {
+    return function guardedTrustedUiHandler(event, ...args) {
+      if (!isTrustedUiEvent(event)) return;
+      return handler.call(this, event, ...args);
+    };
+  }
   // src/ui/toolbar.js
     function installToolbar() {
     // 仅创建容器与按钮；具体面板之后用 HTML/Vue 接入
@@ -1726,38 +1846,38 @@
         if (ui.config.notifyProblems) bar.querySelector("#ykt-btn-bell")?.classList.add("active");
     ui.updateAutoAnswerBtn();
     // 事件绑定
-        bar.querySelector("#ykt-btn-bell")?.addEventListener("click", () => {
+        bar.querySelector("#ykt-btn-bell")?.addEventListener("click", trustedUiHandler(() => {
       ui.config.notifyProblems = !ui.config.notifyProblems;
       ui.saveConfig();
       ui.toast(`习题提醒：${ui.config.notifyProblems ? "开" : "关"}`);
       bar.querySelector("#ykt-btn-bell")?.classList.toggle("active", ui.config.notifyProblems);
-    });
+    }));
     // 课件浏览按钮
-        bar.querySelector("#ykt-btn-pres")?.addEventListener("click", () => {
+        bar.querySelector("#ykt-btn-pres")?.addEventListener("click", trustedUiHandler(() => {
       const btn = bar.querySelector("#ykt-btn-pres");
       const isActive = btn.classList.contains("active");
       ui.showPresentationPanel?.(!isActive);
       btn.classList.toggle("active", !isActive);
-    });
+    }));
     // AI按钮
-        bar.querySelector("#ykt-btn-ai")?.addEventListener("click", () => {
+        bar.querySelector("#ykt-btn-ai")?.addEventListener("click", trustedUiHandler(() => {
       const btn = bar.querySelector("#ykt-btn-ai");
       const isActive = btn.classList.contains("active");
       ui.showAIPanel?.(!isActive);
       btn.classList.toggle("active", !isActive);
-    });
-    bar.querySelector("#ykt-btn-auto-answer")?.addEventListener("click", () => {
+    }));
+    bar.querySelector("#ykt-btn-auto-answer")?.addEventListener("click", trustedUiHandler(() => {
       ui.config.autoAnswer = !ui.config.autoAnswer;
       ui.saveConfig();
       ui.toast(`自动作答：${ui.config.autoAnswer ? "开" : "关"}`);
       ui.updateAutoAnswerBtn();
-    });
-    bar.querySelector("#ykt-btn-settings")?.addEventListener("click", () => {
+    }));
+    bar.querySelector("#ykt-btn-settings")?.addEventListener("click", trustedUiHandler(() => {
       ui.toggleSettingsPanel?.();
-    });
-    bar.querySelector("#ykt-btn-help")?.addEventListener("click", () => {
+    }));
+    bar.querySelector("#ykt-btn-help")?.addEventListener("click", trustedUiHandler(() => {
       ui.toggleTutorialPanel?.();
-    });
+    }));
   }
   function normalizeLessonId(lessonId) {
     if (lessonId === null || lessonId === void 0) return "";
@@ -1994,6 +2114,21 @@
       resp: resp
     };
   }
+  const LOCAL_HTTP_HOSTS = new Set([ "localhost", "127.0.0.1", "[::1]", "::1" ]);
+  function assertSafeApiEndpoint(rawUrl) {
+    const raw = String(rawUrl || "").trim();
+    if (!raw) throw new Error("API endpoint 地址不能为空");
+    let url;
+    try {
+      url = new URL(raw);
+    } catch {
+      throw new Error("API endpoint 不是有效 URL");
+    }
+    if (url.username || url.password) throw new Error("API endpoint 不允许在 URL 中嵌入凭据");
+    if (url.protocol === "https:") return url.href;
+    if (url.protocol === "http:" && LOCAL_HTTP_HOSTS.has(url.hostname)) return url.href;
+    throw new Error("API endpoint 必须使用 HTTPS；仅 localhost/127.0.0.1/[::1] 可使用 HTTP");
+  }
   // src/ai/kimi.js
   // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
   // 约定：
@@ -2049,7 +2184,21 @@
   function makeChatUrl(profile) {
     //   const base = (profile.baseUrl || 'https://api.moonshot.cn').replace(/\/+$/,'');
     //   return `${base}/v1/chat/completions`;   
-    return profile.baseUrl;
+    return assertSafeApiEndpoint(profile.baseUrl);
+  }
+  function sameEndpointOrigin(left, right) {
+    const a = new URL(assertSafeApiEndpoint(left));
+    const b = new URL(assertSafeApiEndpoint(right));
+    return a.origin === b.origin;
+  }
+  function resolveServiceApiKey(label, dedicatedKey, serviceUrl, baseProfile) {
+    const ownKey = String(dedicatedKey || "").trim();
+    if (ownKey) return ownKey;
+    const baseKey = String(baseProfile?.apiKey || "").trim();
+    if (!baseKey) return "";
+    const target = String(serviceUrl || "").trim();
+    if (target && !sameEndpointOrigin(target, baseProfile?.baseUrl)) throw new Error(`${label} 使用不同 API endpoint 时必须配置专用 API Key`);
+    return baseKey;
   }
   function withProfileTemperature(profile, payload) {
     const {temperature: _legacyTemperature, ...requestPayload} = payload;
@@ -2068,8 +2217,18 @@
     const BASE_SYSTEM_PROMPT = [ "1) 任何时候优先遵循【用户输入（优先级最高）】中的明确要求；", "2) 当输入是课件页面（PPT）图像或题干文本时，先判断是否存在“明确题目”；", "3) 若存在明确题目，则输出以下格式的内容：", "   单选：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个，如A", "   多选：格式要求：\n答案: [多个字母用顿号分开]\n解释: [选择理由]\n\n注意：格式如A、B、C", "   投票：格式要求：\n答案: [单个字母]\n解释: [选择理由]\n\n注意：只选一个选项，如A", "   填空/主观题: 格式要求：答案: [直接给出答案内容]，解释: [补充说明]", "4) 若识别不到明确题目，直接使用回答用户输入的问题", "3) 如果PROMPT格式不正确，或者你只接收了图片，输出：", "   STATE: NO_PROMPT", "   SUMMARY: <介绍页面/上下文的主要内容>" ].join("\n");
   // Vision 补充：识别题型与版面元素的步骤说明
     const VISION_GUIDE = [ "【视觉识别要求】", "A. 先判断是否为题目页面（是否有题干/选项/空格/问句等）", "B. 若是题目，尝试提取题干、选项与关键信息；", "C. 否则参考用户输入回答" ].join("\n");
+  const DEFAULT_AI_REQUEST_TIMEOUT_MS = 12e4;
+  function resolveAIRequestTimeout(aiCfg, override) {
+    const raw = override ?? aiCfg?.requestTimeoutMs ?? DEFAULT_AI_REQUEST_TIMEOUT_MS;
+    const timeout = Number(raw);
+    if (!Number.isFinite(timeout) || timeout <= 0) return DEFAULT_AI_REQUEST_TIMEOUT_MS;
+    return Math.max(1e4, Math.min(3e5, timeout));
+  }
+  function isAITimeoutError(error) {
+    return /超时|timeout/i.test(String(error?.message || error || ""));
+  }
   // 通用 OpenAI 协议聊天请求封装（用于 Vision 两步调用）
-    function chatCompletion(profile, payload, debugLabel = "[AI OpenAI]", timeoutMs = 6e4) {
+    function chatCompletion(profile, payload, debugLabel = "[AI OpenAI]", timeoutMs = DEFAULT_AI_REQUEST_TIMEOUT_MS) {
     const url = makeChatUrl(profile);
     return new Promise((resolve, reject) => {
       gm.xhr({
@@ -2117,7 +2276,7 @@
   }
   async function singleStepVisionCall(profile, cleanBase64List, textPrompt, options = {}) {
     const visionModel = profile.visionModel || profile.model;
-    const timeoutMs = options.timeout || 6e4;
+    const timeoutMs = resolveAIRequestTimeout(null, options.timeout);
     const visionTextHeader = [ "【融合模式说明】你将看到一张课件/PPT截图与可选的附加文本。", VISION_GUIDE ].join("\n");
     const imageBlocks = [];
     for (const b64 of cleanBase64List) imageBlocks.push({
@@ -2148,8 +2307,9 @@
   /**
    * 通用 OpenAI 协议 Vision 模型（图像+文本）
    */  async function queryAIVision(imageBase64, textPrompt, aiCfg, options = {}) {
-    const {disableTwoStep: disableTwoStep = false, twoStepDebug: twoStepDebug = false, timeout: timeoutMs = 6e4, problemType: problemType = null, profileId: // ← 新增：后端题型（数字或字符串都行）
+    const {disableTwoStep: disableTwoStep = false, twoStepDebug: twoStepDebug = false, timeout: timeout = void 0, problemType: problemType = null, profileId: // ← 新增：后端题型（数字或字符串都行）
     profileId = null} = options || {};
+    const timeoutMs = resolveAIRequestTimeout(aiCfg, timeout);
     const profile = getActiveProfile$1(aiCfg, profileId);
     if (!profile || !profile.apiKey) throw new Error("请先在设置中配置 AI API Key");
     // ===== 兼容单图 / 多图 =====
@@ -2205,6 +2365,7 @@
       if (!jsonMatch) throw new Error("no JSON found in step1 result");
       structuredQuestion = JSON.parse(jsonMatch[0]);
     } catch (err) {
+      if (isAITimeoutError(err)) throw err;
       console.warn("[雨课堂助手][WARN][vision-step1] failed, fallback to single-step", err);
       return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
         timeout: timeoutMs
@@ -2276,6 +2437,7 @@
       if (twoStepDebug) console.log("[雨课堂助手][INFO][vision-step2] final content:", content2);
       return content2;
     } catch (err) {
+      if (isAITimeoutError(err)) throw err;
       console.warn("[雨课堂助手][WARN][vision-step2] failed, fallback to single-step", err);
       return singleStepVisionCall(profile, cleanBase64List, textPrompt, {
         timeout: timeoutMs
@@ -2285,7 +2447,7 @@
   async function queryOCRVision(imageBase64, aiCfg) {
     const cfg = aiCfg || {};
     const baseProfile = getActiveProfile$1(cfg);
-    const resolvedApiKey = (cfg.ocrApiKey || "").trim() || baseProfile?.apiKey || "";
+    const resolvedApiKey = resolveServiceApiKey("OCR", cfg.ocrApiKey, cfg.ocrApi, baseProfile);
     if (!baseProfile || !resolvedApiKey) throw new Error("请先在设置中填写可用的 OCR API Key 或 AI API Key");
     const profile = {
       ...baseProfile,
@@ -2319,7 +2481,7 @@
   async function queryTranslationText(text, targetLanguage, aiCfg) {
     const cfg = aiCfg || {};
     const baseProfile = getActiveProfile$1(cfg);
-    const resolvedApiKey = (cfg.translateApiKey || "").trim() || baseProfile?.apiKey || "";
+    const resolvedApiKey = resolveServiceApiKey("翻译", cfg.translateApiKey, cfg.translateApi, baseProfile);
     if (!baseProfile || !resolvedApiKey) throw new Error("请先在设置中填写可用的翻译 API Key 或 AI API Key");
     const resolvedTargetLanguage = String(targetLanguage).trim();
     if (!resolvedTargetLanguage) throw new Error("翻译目标语言不能为空");
@@ -2606,7 +2768,12 @@
    */  async function captureSlideImage(slideId) {
     try {
       console.log("[captureSlideImage] 获取幻灯片图片:", slideId);
-      const slide = repo.slides.get(slideId);
+      const slideKey = slideId == null ? "" : String(slideId);
+      let slide = repo.slides.get(slideId) || repo.slides.get(slideKey);
+      if (!slide && slideKey) for (const [key, candidate] of repo.slides) if (String(key) === slideKey) {
+        slide = candidate;
+        break;
+      }
       if (!slide) {
         console.error("[captureSlideImage] 找不到幻灯片:", slideId);
         return null;
@@ -3262,7 +3429,11 @@
           prompt = formatProblemForVision(problem, typeMap, hasTextInfo);
           aiContent = await queryAIVision(image, prompt, aiConfig, {
             profileId: answerProfile?.id,
-            problemType: problem.problemType
+            problemType: problem.problemType,
+            // Automatic answering is latency-sensitive.  The two-step Vision ->
+            // text pipeline can multiply one question into 2-3 sequential AI
+            // calls, so keep unattended answering to one bounded Vision request.
+            disableTwoStep: true
           });
           parsed = parseAIAnswer(problem, aiContent);
           if (!parsed) throw new Error("无法解析 AI 返回的答案");
@@ -4231,7 +4402,7 @@
     if (restored) ui.updateActiveProblems();
     return restored;
   }
-  if (typeof window !== "undefined") window.addEventListener("ykt:auto-answer-config-changed", () => {
+  onInternalEvent("auto-answer-config-changed", () => {
     restorePendingProblemStatuses();
     if (ui.config.autoJoinEnabled) actions.maybeStartAutoJoin(); else actions.stopAutoJoinLoop();
   });
@@ -5128,7 +5299,7 @@
       loadProfileToForm($profileSelect.value);
     });
     // 添加 profile
-        $profileAdd.addEventListener("click", () => {
+        $profileAdd.addEventListener("click", trustedUiHandler(() => {
       const id = `p_${Date.now().toString(36)}`;
       const newP = {
         id: id,
@@ -5144,9 +5315,9 @@
       refreshProfileSelect();
       refreshAnswerProfileSelects();
       loadProfileToForm(id);
-    });
+    }));
     // 删除 profile
-        $profileDel.addEventListener("click", () => {
+        $profileDel.addEventListener("click", trustedUiHandler(() => {
       const ai = ui.config.ai;
       if (ai.profiles.length <= 1) {
         ui.toast("至少保留一个配置", 2500);
@@ -5158,7 +5329,7 @@
       refreshProfileSelect();
       refreshAnswerProfileSelects();
       loadProfileToForm(ai.activeProfileId);
-    });
+    }));
     function syncFormFromConfig() {
       ensureAIProfiles(ui.config.ai || (ui.config.ai = {}));
       refreshProfileSelect();
@@ -5191,7 +5362,7 @@
     syncMountedForm = syncFormFromConfig;
     syncFormFromConfig();
     // 保存设置
-        root$4.querySelector("#ykt-btn-settings-save").addEventListener("click", async () => {
+        root$4.querySelector("#ykt-btn-settings-save").addEventListener("click", trustedUiHandler(async () => {
       // --- 保存当前 Profile ---
       const ai = ui.config.ai;
       const pid = ai.activeProfileId;
@@ -5254,11 +5425,11 @@
       ui.updateAutoAnswerBtn();
       const wakeLockStatus = await screenWakeLock.setEnabled(ui.config.keepScreenAwake);
       if (ui.config.keepScreenAwake && wakeLockStatus.reason === "not-classroom") ui.toast("设置已保存；进入课堂页后将尝试保持亮屏", 3e3); else if (ui.config.keepScreenAwake && wakeLockStatus.reason === "unsupported") ui.toast("设置已保存；当前浏览器不支持课堂保持亮屏", 3500); else if (ui.config.keepScreenAwake && wakeLockStatus.reason === "request-failed") ui.toast("设置已保存；系统未允许保持亮屏，请检查省电模式或浏览器权限", 4e3); else ui.toast("设置已保存");
-    });
+    }));
     //--------------------------------------
     //            重置为默认
     //--------------------------------------
-        root$4.querySelector("#ykt-btn-settings-reset").addEventListener("click", async () => {
+        root$4.querySelector("#ykt-btn-settings-reset").addEventListener("click", trustedUiHandler(async () => {
       if (!confirm("确定要重置为默认设置吗？")) return;
       Object.assign(ui.config, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
       ensureAIProfiles(ui.config.ai);
@@ -5274,10 +5445,10 @@
       ui.updateAutoAnswerBtn();
       await screenWakeLock.setEnabled(false);
       ui.toast("设置已重置");
-    });
+    }));
     // 音频设置
         const MAX_SIZE = 2 * 1024 * 1024;
-    if ($audioFile) $audioFile.addEventListener("change", e => {
+    if ($audioFile) $audioFile.addEventListener("change", trustedUiHandler(e => {
       const f = e.target.files?.[0];
       if (!f) return;
       if (f.size > MAX_SIZE) {
@@ -5296,8 +5467,8 @@
         ui.toast("已应用自定义提示音");
       };
       reader.readAsDataURL(f);
-    });
-    if ($applyUrl) $applyUrl.addEventListener("click", () => {
+    }));
+    if ($applyUrl) $applyUrl.addEventListener("click", trustedUiHandler(() => {
       const url = ($audioUrl.value || "").trim();
       if (!url) return ui.toast("请输入音频URL");
       if (!/^https?:\/\/|^data:audio\//i.test(url)) {
@@ -5311,21 +5482,21 @@
       $audioName.textContent = "当前：（自定义URL）";
       ui._playNotifySound(ui.config.notifyVolume);
       ui.toast("已应用自定义音频URL");
-    });
-    if ($preview) $preview.addEventListener("click", () => {
+    }));
+    if ($preview) $preview.addEventListener("click", trustedUiHandler(() => {
       ui._playNotifySound(ui.config.notifyVolume);
-    });
-    if ($clear) $clear.addEventListener("click", () => {
+    }));
+    if ($clear) $clear.addEventListener("click", trustedUiHandler(() => {
       ui.setCustomNotifyAudio({
         src: "",
         name: ""
       });
       $audioName.textContent = "当前：使用内置“叮-咚”提示音";
       ui.toast("已清除自定义音频");
-    });
+    }));
     // 测试提醒
         const $btnTest = root$4.querySelector("#ykt-btn-test-notify");
-    if ($btnTest) $btnTest.addEventListener("click", () => {
+    if ($btnTest) $btnTest.addEventListener("click", trustedUiHandler(() => {
       const mockProblem = {
         problemId: "TEST-001",
         body: "【测试题】这是一个测试提醒",
@@ -5334,7 +5505,7 @@
       ui.notifyProblem(mockProblem, {
         thumbnail: null
       });
-    });
+    }));
     // 关闭按钮
         root$4.querySelector("#ykt-settings-close").addEventListener("click", () => showSettingsPanel(false));
     mounted$5 = true;
@@ -5683,9 +5854,9 @@
     document.body.appendChild(host.firstElementChild);
     root$3 = document.getElementById("ykt-ai-answer-panel");
     $$3("#ykt-ai-close")?.addEventListener("click", () => showAIPanel(false));
-    $$3("#ykt-ai-ask")?.addEventListener("click", askAIFusionMode);
-    $$3("#ykt-ai-force-answer")?.addEventListener("click", forceAIAnswerForCurrent);
-    $$3("#ykt-ai-submit")?.addEventListener("click", submitEditedAnswer);
+    $$3("#ykt-ai-ask")?.addEventListener("click", trustedUiHandler(askAIFusionMode));
+    $$3("#ykt-ai-force-answer")?.addEventListener("click", trustedUiHandler(forceAIAnswerForCurrent));
+    $$3("#ykt-ai-submit")?.addEventListener("click", trustedUiHandler(submitEditedAnswer));
     $$3("#ykt-ai-reset-edit")?.addEventListener("click", () => {
       if (lastAnswerContext?.parsed !== void 0) setEditableAnswer(lastAnswerContext.parsed);
     });
@@ -5703,7 +5874,7 @@
     }).catch(e => {
       W$2("Vue 实例初始化失败，将使用备用方案:", e);
     });
-    window.addEventListener("ykt:presentation:slide-selected", ev => {
+    onInternalEvent("presentation:slide-selected", ev => {
       L$2("收到小窗选页事件", ev?.detail);
       const sid = asIdStr(ev?.detail?.slideId);
       const imageUrl = ev?.detail?.imageUrl || null;
@@ -5716,11 +5887,11 @@
       manualMultiSlidesArmed = false;
       renderQuestion();
     });
-    window.addEventListener("ykt:open-ai", () => {
+    onInternalEvent("open-ai", () => {
       L$2("收到打开 AI 面板事件");
       showAIPanel(true);
     });
-    window.addEventListener("ykt:ask-ai-for-slide", ev => {
+    onInternalEvent("ask-ai-for-slide", ev => {
       const detail = ev?.detail || {};
       const slideId = asIdStr(detail.slideId);
       const imageUrl = detail.imageUrl || "";
@@ -5745,7 +5916,7 @@
       renderSelectedPPTPreview();
     });
     // ===== 手动多页提问（来自课件面板多选）=====
-        window.addEventListener("ykt:ask-ai-for-slides", ev => {
+        onInternalEvent("ask-ai-for-slides", ev => {
       const detail = ev?.detail || {};
       const slides = Array.isArray(detail.slides) ? detail.slides : [];
       if (!slides.length) return;
@@ -6625,9 +6796,9 @@
     $$2("#ykt-presentation-close")?.addEventListener("click", () => showPresentationPanel(false));
     $$2("#ykt-open-problem-list")?.addEventListener("click", () => {
       showPresentationPanel(false);
-      window.dispatchEvent(new CustomEvent("ykt:open-problem-list"));
+      emitInternalEvent("open-problem-list");
     });
-    $$2("#ykt-ask-current")?.addEventListener("click", () => {
+    $$2("#ykt-ask-current")?.addEventListener("click", trustedUiHandler(() => {
       if (selectedSlideIds.size > 0) {
         const slides = [];
         for (const sid of selectedSlideIds) {
@@ -6643,13 +6814,11 @@
           slidesCount: slides.length
         });
         if (slides.length === 0) return ui.toast("所选页面无可用图片", 2500);
-        window.dispatchEvent(new CustomEvent("ykt:ask-ai-for-slides", {
-          detail: {
-            slides: slides,
-            source: "manual"
-          }
-        }));
-        window.dispatchEvent(new CustomEvent("ykt:open-ai"));
+        emitInternalEvent("ask-ai-for-slides", {
+          slides: slides,
+          source: "manual"
+        });
+        emitInternalEvent("open-ai");
         return;
       }
       // ===== 否则走旧逻辑：单页 =====
@@ -6662,17 +6831,15 @@
       });
       if (!sid) return ui.toast("请先在左侧选择一页PPT", 2500);
       const imageUrl = getSlideImageUrl(lookup.slide);
-      window.dispatchEvent(new CustomEvent("ykt:ask-ai-for-slide", {
-        detail: {
-          slideId: sid,
-          imageUrl: imageUrl
-        }
-      }));
-      window.dispatchEvent(new CustomEvent("ykt:open-ai"));
-    });
+      emitInternalEvent("ask-ai-for-slide", {
+        slideId: sid,
+        imageUrl: imageUrl
+      });
+      emitInternalEvent("open-ai");
+    }));
     $$2("#ykt-download-current")?.addEventListener("click", downloadCurrentSlide);
-    $$2("#ykt-ocr-current")?.addEventListener("click", recognizeCurrentSlideText);
-    $$2("#ykt-translate-toggle")?.addEventListener("click", translateCurrentOCRText);
+    $$2("#ykt-ocr-current")?.addEventListener("click", trustedUiHandler(recognizeCurrentSlideText));
+    $$2("#ykt-translate-toggle")?.addEventListener("click", trustedUiHandler(translateCurrentOCRText));
     $$2("#ykt-download-pdf")?.addEventListener("click", downloadPresentationPDF);
     const translateTargetInput = getTranslateTargetInput();
     if (translateTargetInput && !translateTargetInput.value.trim()) translateTargetInput.value = detectBrowserLanguage();
@@ -6788,7 +6955,13 @@
       cont.className = "presentation-container";
       const titleEl = document.createElement("div");
       titleEl.className = "presentation-title";
-      titleEl.innerHTML = `\n      <span>${presentation.title || `课件 ${id}`}</span>\n      <i class="fas fa-download download-btn" title="下载课件"></i>\n    `;
+      const titleText = document.createElement("span");
+      titleText.textContent = presentation.title || `课件 ${id}`;
+      titleEl.appendChild(titleText);
+      const downloadIcon = document.createElement("i");
+      downloadIcon.className = "fas fa-download download-btn";
+      downloadIcon.setAttribute("title", "下载课件");
+      titleEl.appendChild(downloadIcon);
       cont.appendChild(titleEl);
       titleEl.querySelector(".download-btn")?.addEventListener("click", e => {
         e.stopPropagation();
@@ -6874,9 +7047,7 @@
             presentationId: presIdStr
           };
           L$1("派发事件 ykt:presentation:slide-selected", detail);
-          window.dispatchEvent(new CustomEvent("ykt:presentation:slide-selected", {
-            detail: detail
-          }));
+          emitInternalEvent("presentation:slide-selected", detail);
           L$1("调用 actions.navigateTo ->", {
             presIdStr: presIdStr,
             slideIdStr: slideIdStr
@@ -6981,11 +7152,11 @@
       const forceAI = document.createElement("button");
       forceAI.type = "button";
       forceAI.textContent = "AI 强制作答";
-      forceAI.addEventListener("click", async ev => {
+      forceAI.addEventListener("click", trustedUiHandler(async ev => {
         ev.stopPropagation();
         const status = repo.problemStatus.get(String(prob.problemId)) || repo.problemStatus.get(prob.problemId);
-        const endTime = Number(status?.endTime ?? prob.endTime);
-        const expired = Number.isFinite(endTime) && Date.now() >= endTime;
+        const endTime = getFiniteDeadline(status?.endTime, prob.endTime);
+        const expired = isProblemExpired(Date.now(), endTime);
         if (expired && !window.confirm("这道题已过截止时间，AI 将使用强制补交接口。继续吗？")) return;
         forceAI.disabled = true;
         try {
@@ -6997,18 +7168,16 @@
           forceAI.disabled = false;
           updateSlideView();
         }
-      });
+      }));
       problemActions.appendChild(forceAI);
       const editAnswer = document.createElement("button");
       editAnswer.type = "button";
       editAnswer.textContent = "编辑/补交";
       editAnswer.addEventListener("click", ev => {
         ev.stopPropagation();
-        window.dispatchEvent(new CustomEvent("ykt:open-problem-list", {
-          detail: {
-            problemId: prob.problemId
-          }
-        }));
+        emitInternalEvent("open-problem-list", {
+          problemId: prob.problemId
+        });
       });
       problemActions.appendChild(editAnswer);
       box.appendChild(problemActions);
@@ -7320,26 +7489,22 @@
     // AI 解答：打开 AI 面板并优先使用该题所在页（若拿得到）
         const btnAI = create("button");
     btnAI.textContent = "AI解答";
-    btnAI.onclick = () => {
+    btnAI.onclick = trustedUiHandler(() => {
       e.presentationId || prob?.presentationId;
       const slideId = e.slide?.id || e.slideId || prob?.slideId;
-      if (slideId) window.dispatchEvent(new CustomEvent("ykt:ask-ai-for-slide", {
-        detail: {
-          slideId: String(slideId),
-          imageUrl: repo.slides.get(String(slideId))?.image || repo.slides.get(String(slideId))?.thumbnail || ""
-        }
-      }));
-      window.dispatchEvent(new CustomEvent("ykt:open-ai", {
-        detail: {
-          problemId: e.problemId
-        }
-      }));
-    };
+      if (slideId) emitInternalEvent("ask-ai-for-slide", {
+        slideId: String(slideId),
+        imageUrl: repo.slides.get(String(slideId))?.image || repo.slides.get(String(slideId))?.thumbnail || ""
+      });
+      emitInternalEvent("open-ai", {
+        problemId: e.problemId
+      });
+    });
     actionsBar.appendChild(btnAI);
     // AI 强制作答：直接分析并提交；过期题目需要二次确认后走补交接口
         const btnForceAI = create("button");
     btnForceAI.textContent = "AI强制作答";
-    btnForceAI.onclick = async () => {
+    btnForceAI.onclick = trustedUiHandler(async () => {
       if (!acquireProblemAction(e.problemId)) return;
       const ps = repo.problemStatus?.get?.(e.problemId);
       const end = getFiniteDeadline(ps?.endTime, e.endTime, prob?.endTime);
@@ -7363,12 +7528,12 @@
         row.classList.remove("loading");
         releaseProblemAction(e.problemId);
       }
-    };
+    });
     actionsBar.appendChild(btnForceAI);
     // 修改后刷新题目
         const btnRefresh = create("button");
     btnRefresh.textContent = "刷新题目";
-    btnRefresh.onclick = async () => {
+    btnRefresh.onclick = trustedUiHandler(async () => {
       row.classList.add("loading");
       try {
         const resp = await fetchProblemDetail(e.problemId);
@@ -7385,7 +7550,7 @@
       } finally {
         row.classList.remove("loading");
       }
-    };
+    });
     actionsBar.appendChild(btnRefresh);
   }
   function updateRow(row, e, prob) {
@@ -7447,7 +7612,7 @@
     // 正常提交（过期则提示是否补交）
         const btnSubmit = create("button");
     btnSubmit.textContent = "提交";
-    btnSubmit.onclick = async () => {
+    btnSubmit.onclick = trustedUiHandler(async () => {
       if (!acquireProblemAction(e.problemId)) return;
       row.classList.add("loading");
       btnSubmit.disabled = true;
@@ -7507,12 +7672,12 @@
         row.classList.remove("loading");
         releaseProblemAction(e.problemId);
       }
-    };
+    });
     submitBar.appendChild(btnSubmit);
     // 强制补交
         const btnForceRetry = create("button");
     btnForceRetry.textContent = "强制补交";
-    btnForceRetry.onclick = async () => {
+    btnForceRetry.onclick = trustedUiHandler(async () => {
       if (!acquireProblemAction(e.problemId)) return;
       row.classList.add("loading");
       btnForceRetry.disabled = true;
@@ -7546,7 +7711,7 @@
         row.classList.remove("loading");
         releaseProblemAction(e.problemId);
       }
-    };
+    });
     submitBar.appendChild(btnForceRetry);
     editorBox.appendChild(submitBar);
     detail.appendChild(editorBox);
@@ -7561,7 +7726,7 @@
     document.body.appendChild(wrap.firstElementChild);
     root$2 = document.getElementById("ykt-problem-list-panel");
     $$1("#ykt-problem-list-close")?.addEventListener("click", () => showProblemListPanel(false));
-    window.addEventListener("ykt:open-problem-list", () => showProblemListPanel(true));
+    onInternalEvent("open-problem-list", () => showProblemListPanel(true));
     mounted$2 = true;
     // 首次挂载时就做一次灌入
         hydrateProblemsFromPresentations();
@@ -7773,7 +7938,7 @@
       mountProblemListPanel();
       mountActiveProblemsPanel();
       mountTutorialPanel();
-      window.addEventListener("ykt:open-ai", () => this.showAIPanel(true));
+      onInternalEvent("open-ai", () => this.showAIPanel(true));
     },
     // 题目提醒
     notifyProblem(problem, slide, notice = {}) {
