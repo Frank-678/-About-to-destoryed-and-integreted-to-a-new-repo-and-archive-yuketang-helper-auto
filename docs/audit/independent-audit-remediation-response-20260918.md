@@ -139,3 +139,25 @@
 > 自动化回归、独立源码审查、供应链审查、Chromium 黑盒与 CodeQL 均已通过；可以进入真实课堂现场验收。真实课堂验收完成之前，不宣称正式生产稳定。
 
 这一定义既保留了独立审查的严谨性，也与当前已有自动化证据一致。
+
+
+## 现场复验补充：AI 429 并发与提交状态（2026-09-18 11:45）
+
+现场复验进一步发现，先前被用户感知为“AI 大量超时”的一部分失败，实际是 AI 服务返回 HTTP 429：
+
+`Your account organization concurrency: 1, request reached max organization concurrency: 1`
+
+截图同时出现“页面分析失败”和“自动作答失败”，证明脚本自身可能让 AI 面板分析与自动作答并发使用同一凭据，从而撞上账号并发上限。
+
+本轮整改已完成：
+
+1. 同一 API 凭据/endpoint 的 AI 请求进入共享串行队列，脚本自身不会再制造 >1 的并发。
+2. HTTP 429 会读取 `Retry-After` 或响应消息中的 `try again after N seconds`，在有限次数内自动退避重试。
+3. 自动作答固定使用单步 Vision，避免默认两阶段 Vision→Text 把一次作答放大成 2–3 个串行 AI 请求。
+4. AI 默认请求预算统一为 120 秒；transport timeout 不再触发另一轮高成本 fallback。
+5. 普通提交遇到 `50028 LESSON_PROBLEM_ALREADY_ANSWERED` 或 `50026 LESSON_PROBLEM_FINISHED` 时，会转换成可操作的“请使用强制补交”提示，并保留结构化错误码。
+6. 新增回归测试覆盖：同凭据串行、429 自动重试、非 429 不重试、50026/50028 状态提示。
+
+验证证据：commit `c54de267d206c8643832ea3d8b0d9f6876fd5e01` 的 Full Regression 五层均通过（Legacy / Unit / Browser+Network Contract / Cross-module Scenario / Build Contract）。
+
+这项现场补充不改变此前独立审查对源码安全、供应链、私有凭据存储和架构整改的结论，只补充说明了真实课堂环境中额外发现并已关闭的 AI 并发故障路径。
