@@ -6,6 +6,8 @@ import { ensureHtml2Canvas, ensureJsPDF } from '../../core/env.js';
 import { captureSlideImage } from '../../capture/screenshoot.js';
 import { queryOCRVision, queryTranslationText } from '../../ai/openai.js';
 import { emitInternalEvent } from '../../core/internal-events.js';
+import { trustedUiHandler } from '../../core/trusted-ui-event.js';
+import { getFiniteDeadline, isProblemExpired } from '../../core/problem-view-state.js';
 
 let mounted = false;
 let host;
@@ -699,7 +701,7 @@ export function mountPresentationPanel() {
     emitInternalEvent('open-problem-list');
   });
 
-  $('#ykt-ask-current')?.addEventListener('click', () => {
+  $('#ykt-ask-current')?.addEventListener('click', trustedUiHandler(() => {
     if (selectedSlideIds.size > 0) {
       const slides = [];
       for (const sid of selectedSlideIds) {
@@ -722,11 +724,11 @@ export function mountPresentationPanel() {
     const imageUrl = getSlideImageUrl(lookup.slide);
     emitInternalEvent('ask-ai-for-slide', { slideId: sid, imageUrl });
     emitInternalEvent('open-ai');
-  });
+  }));
 
   $('#ykt-download-current')?.addEventListener('click', downloadCurrentSlide);
-  $('#ykt-ocr-current')?.addEventListener('click', recognizeCurrentSlideText);
-  $('#ykt-translate-toggle')?.addEventListener('click', translateCurrentOCRText);
+  $('#ykt-ocr-current')?.addEventListener('click', trustedUiHandler(recognizeCurrentSlideText));
+  $('#ykt-translate-toggle')?.addEventListener('click', trustedUiHandler(translateCurrentOCRText));
   $('#ykt-download-pdf')?.addEventListener('click', downloadPresentationPDF);
 
   const translateTargetInput = getTranslateTargetInput();
@@ -1059,11 +1061,11 @@ export function updateSlideView() {
     const forceAI = document.createElement('button');
     forceAI.type = 'button';
     forceAI.textContent = 'AI 强制作答';
-    forceAI.addEventListener('click', async (ev) => {
+    forceAI.addEventListener('click', trustedUiHandler(async (ev) => {
       ev.stopPropagation();
       const status = repo.problemStatus.get(String(prob.problemId)) || repo.problemStatus.get(prob.problemId);
-      const endTime = Number(status?.endTime ?? prob.endTime);
-      const expired = Number.isFinite(endTime) && Date.now() >= endTime;
+      const endTime = getFiniteDeadline(status?.endTime, prob.endTime);
+      const expired = isProblemExpired(Date.now(), endTime);
       if (expired && !window.confirm('这道题已过截止时间，AI 将使用强制补交接口。继续吗？')) return;
       forceAI.disabled = true;
       try {
@@ -1073,7 +1075,7 @@ export function updateSlideView() {
         forceAI.disabled = false;
         updateSlideView();
       }
-    });
+    }));
     problemActions.appendChild(forceAI);
 
     const editAnswer = document.createElement('button');
