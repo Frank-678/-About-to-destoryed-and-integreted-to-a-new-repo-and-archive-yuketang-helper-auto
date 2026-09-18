@@ -86,3 +86,19 @@ test('historical release files remain separate from generated dist output', () =
   assert.equal(path.basename(distPath), 'ykt-helper-1216.user.js');
   assert.ok(!distPath.includes(`${path.sep}release${path.sep}`));
 });
+
+
+test('remote runtime JavaScript dependencies are exact-version metadata requirements', () => {
+  const text = bundle();
+  assert.match(text, /@require\s+https:\/\/cdn\.jsdelivr\.net\/npm\/html2canvas@1\.4\.1\/dist\/html2canvas\.min\.js/);
+  assert.match(text, /@require\s+https:\/\/cdn\.jsdelivr\.net\/npm\/jspdf@2\.5\.1\/dist\/jspdf\.umd\.min\.js/);
+  assert.match(text, /@require\s+https:\/\/cdn\.jsdelivr\.net\/npm\/mathjax@3\.2\.2\/es5\/tex-svg\.min\.js/);
+  assert.doesNotMatch(text, /html2canvas\.hertzen\.com/);
+  assert.doesNotMatch(text, /mathjax@3\/es5/);
+});
+
+test('bundle does not dynamically inject remote JavaScript tags at runtime', () => {
+  const text = bundle();
+  assert.doesNotMatch(text, /document\.createElement\(["']script["']\)/);
+  assert.doesNotMatch(text, /Failed to load:\s*\$\{src\}/);
+});
