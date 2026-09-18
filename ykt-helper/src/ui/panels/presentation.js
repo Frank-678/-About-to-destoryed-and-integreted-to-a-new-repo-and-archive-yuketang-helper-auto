@@ -16,6 +16,7 @@ const selectedSlideIds = new Set();
 const ocrResults = new Map();
 const translationResults = new Map();
 let currentResultMode = 'original';
+let staticDomObserverInstalled = false;
 function findSlideAcrossPresentations(idStr) {
   for (const [, pres] of repo.presentations) { const arr = pres?.slides || []; const hit = arr.find(s => String(s.id) === idStr); if (hit) return hit; }
   return null;
@@ -779,8 +780,8 @@ export function updatePresentationList() {
     W('[static-report] 检测/注入失败：', e);
   }
 
-  if (!window.__ykt_static_dom_mo) {
-    window.__ykt_static_dom_mo = true;
+  if (!staticDomObserverInstalled) {
+    staticDomObserverInstalled = true;
     let times = 0;
 
     const mo = new MutationObserver(() => {
