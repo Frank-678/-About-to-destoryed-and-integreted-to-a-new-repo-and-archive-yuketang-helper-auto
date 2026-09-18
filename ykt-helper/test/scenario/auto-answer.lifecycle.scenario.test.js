@@ -224,3 +224,17 @@ test('verification correction creates exactly one second submission and exposes 
   assert.equal(result.aiAnswer, '答案: B');
   assert.equal(result.verificationState, 'corrected');
 });
+
+
+test('automatic runner forces single-step vision to avoid multi-request timeout amplification', async () => {
+  let seenOptions;
+  const { runner } = harness({
+    queryAIVision: async (_image, _prompt, _config, options) => {
+      seenOptions = options;
+      return '答案: A';
+    },
+  });
+  const result = await runner.run(problem(), status(), { lessonId: 'l1' });
+  assert.equal(result.ok, true);
+  assert.equal(seenOptions.disableTwoStep, true);
+});
