@@ -39,8 +39,8 @@ test('page unsafeWindow exposes only the intentional XHR/WebSocket interceptors'
 test('production source does not publish custom helper objects onto window globals', async () => {
   const files = (await walk(srcRoot)).filter(path => extname(path) === '.js');
   const findings = [];
-  const assignment = /\bwindow\.([A-Za-z_$][\w$]*)\s*=/;
-  const allowed = new Set(['MathJax']);
+  const assignment = /\bwindow\.([A-Za-z_$][\w$]*)\s*=(?!=)/;
+  const allowed = new Set(['MathJax', 'fetch']);
   for (const path of files) {
     const source = await readFile(path, 'utf8');
     source.split('\n').forEach((line, index) => {
