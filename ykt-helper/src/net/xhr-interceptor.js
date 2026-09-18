@@ -1,6 +1,7 @@
 // src/net/xhr-interceptor.js
 import { gm } from '../core/env.js';
 import { runtimeActionRef } from '../core/runtime-dispatch.js';
+import { isYuketangHostname } from '../core/yuketang-origin.js';
 
 export function installXHRInterceptor() {
   class MyXHR extends XMLHttpRequest {
@@ -30,6 +31,7 @@ export function installXHRInterceptor() {
   }
 
   MyXHR.addHandler((xhr, method, url) => {
+    if (!isYuketangHostname(url.hostname)) return;
     const envType = detectEnvironmentAndAdaptAPI();
     const pathname = url.pathname || '';
     console.log('[雨课堂助手][INFO] XHR请求:', method, pathname, url.search);
