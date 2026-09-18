@@ -159,3 +159,21 @@ test('after deadline without explicit forceRetry still uses ordinary answer rout
   assert.equal(result.route, 'answer');
   assert.equal(recorder.calls.at(-1).url, '/api/v3/lesson/problem/answer');
 });
+
+
+for (const [code, msg, expected] of [
+  [50028, 'LESSON_PROBLEM_ALREADY_ANSWERED', /已提交过|强制补交|50028/],
+  [50026, 'LESSON_PROBLEM_FINISHED', /已结束|强制补交|50026/],
+]) {
+  test(`answer endpoint translates server state ${code} into actionable retry guidance`, async () => {
+    recorder.respond({ code, msg });
+    await assert.rejects(
+      () => answerProblem({ problemId: 77, problemType: 4 }, ['x']),
+      error => {
+        assert.match(String(error?.message || ''), expected);
+        assert.equal(error?.code, code);
+        return true;
+      },
+    );
+  });
+}
