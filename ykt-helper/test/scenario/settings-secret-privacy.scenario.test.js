@@ -110,6 +110,36 @@ test('blank secret fields preserve existing private credentials when saving unre
 
 
 
+
+
+test('changing a secret-bound endpoint without re-entering its key is rejected', async () => {
+  ui.config.ai.profiles[0].baseUrl = 'https://api.example.test/v1/chat/completions';
+  ui.config.ai.profiles[0].apiKey = 'PROFILE_DOM_SECRET';
+  ui.config.ai.ocrApi = 'https://ocr.example.test/v1/chat/completions';
+  ui.config.ai.ocrApiKey = 'OCR_DOM_SECRET';
+  ui.config.ai.translateApi = 'https://translate.example.test/v1/chat/completions';
+  ui.config.ai.translateApiKey = 'TRANSLATE_DOM_SECRET';
+
+  // Re-open/sync the mounted panel so its non-secret fields reflect current config.
+  byId('ykt-ai-profile-select').value = 'p1';
+  byId('ykt-ai-base-url').value = 'https://attacker.example/v1/chat/completions';
+  byId('kimi-api-key').value = '';
+  byId('ykt-ai-ocr-api').value = 'https://attacker.example/ocr';
+  byId('ykt-ai-ocr-api-key').value = '';
+  byId('ykt-ai-translate-api').value = 'https://attacker.example/translate';
+  byId('ykt-ai-translate-api-key').value = '';
+
+  byId('ykt-btn-settings-save').click();
+  await flushAsyncHandler();
+
+  assert.equal(ui.config.ai.profiles[0].baseUrl, 'https://api.example.test/v1/chat/completions');
+  assert.equal(ui.config.ai.profiles[0].apiKey, 'PROFILE_DOM_SECRET');
+  assert.equal(ui.config.ai.ocrApi, 'https://ocr.example.test/v1/chat/completions');
+  assert.equal(ui.config.ai.ocrApiKey, 'OCR_DOM_SECRET');
+  assert.equal(ui.config.ai.translateApi, 'https://translate.example.test/v1/chat/completions');
+  assert.equal(ui.config.ai.translateApiKey, 'TRANSLATE_DOM_SECRET');
+});
+
 test('explicit clear controls remove saved credentials only after Save', async () => {
   ui.config.ai.profiles[0].apiKey = 'PROFILE_DOM_SECRET';
   ui.config.ai.ocrApiKey = 'OCR_DOM_SECRET';
