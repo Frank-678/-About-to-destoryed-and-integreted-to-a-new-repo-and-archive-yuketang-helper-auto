@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  createGmRequestRecorder,
   createXMLHttpRequestRecorder,
   installBrowserGlobals,
   uninstallBrowserGlobals,
 } from '../support/browser-harness.js';
 
+const gmRecorder = createGmRequestRecorder();
 const xhrRecorder = createXMLHttpRequestRecorder();
-installBrowserGlobals({ href: 'https://www.yuketang.cn/lesson/fullscreen/v3/lesson-timeline' });
+installBrowserGlobals({
+  href: 'https://www.yuketang.cn/lesson/fullscreen/v3/lesson-timeline',
+  gmRequest: gmRecorder.fn,
+});
 globalThis.XMLHttpRequest = xhrRecorder.FakeXMLHttpRequest;
 
 const { repo } = await import('../../src/state/repo.js');
@@ -36,9 +41,17 @@ function reset() {
     autoForceRetry: false,
     notifyProblems: false,
   });
-  // Deliberately exercise the explicit no-profile fallback here; the separate
-  // L4 AI scenario covers the full model request path.
-  ui.config.ai = { ...ui.config.ai, profiles: [{ id: 'none', apiKey: '' }], activeProfileId: 'none' };
+  ui.config.ai = {
+    ...ui.config.ai,
+    profiles: [{
+      id: 'timeline-ai',
+      baseUrl: 'https://example.test/v1/chat/completions',
+      apiKey: 'test-key',
+      model: 'same-model',
+      visionModel: 'same-model',
+    }],
+    activeProfileId: 'timeline-ai',
+  };
   return lessonId;
 }
 
@@ -92,6 +105,7 @@ test('a problem first appearing in a later timeline snapshot becomes live and re
   ], { lessonId });
 
   const newProblem = addProblem('new-q', 'new-s');
+  gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] });
   xhrRecorder.respond({ code: 0, data: {} });
   const before = xhrRecorder.calls.length;
   actions.onFetchTimeline([
@@ -114,6 +128,7 @@ test('the same timeline problem is never promoted twice', async () => {
   const lessonId = reset();
   addProblem('same-q', 'same-s');
   actions.onFetchTimeline([], { lessonId });
+  gmRecorder.respond({ choices: [{ message: { content: '答案: A' } }] });
   xhrRecorder.respond({ code: 0, data: {} });
 
   const entry = { type: 'problem', prob: 'same-q', sid: 'same-s', pres: 'p1', dt: Date.now(), limit: 60 };
