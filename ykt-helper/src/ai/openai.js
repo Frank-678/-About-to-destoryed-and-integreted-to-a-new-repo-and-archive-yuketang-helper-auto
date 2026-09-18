@@ -1,5 +1,6 @@
 // src/ai/kimi.js
 import { gm } from '../core/env.js';
+import { assertSafeApiEndpoint } from '../core/remote-endpoint.js';
 
 // 将后端 problemType 数字映射为 Step1/Step2 使用的 question_type 字符串
 // 约定：
@@ -46,7 +47,7 @@ function getActiveProfile(aiCfg, profileId = null) {
 function makeChatUrl(profile) {
 //   const base = (profile.baseUrl || 'https://api.moonshot.cn').replace(/\/+$/,'');
 //   return `${base}/v1/chat/completions`;   
-    return profile.baseUrl;
+    return assertSafeApiEndpoint(profile.baseUrl);
 }
 
 function withProfileTemperature(profile, payload) {
