@@ -1,6 +1,7 @@
 import { normalizeRuntimeConfig } from './config-normalization.js';
 
 const PRIVATE_SECRETS_SUFFIX = 'private-secrets:v1';
+const DEFAULT_LEGACY_PROFILE_ENDPOINT = 'https://api.moonshot.cn/v1/chat/completions';
 
 const LEGACY_TRUSTED_ENDPOINT_HOSTS = new Set([
   'api.moonshot.cn',
@@ -111,7 +112,7 @@ function collectProfileEndpoints(target, profiles) {
     if (!profile || typeof profile !== 'object') continue;
     const id = String(profile.id ?? '').trim();
     if (!id) continue;
-    target[id] = String(profile.baseUrl || '');
+    target[id] = String(profile.baseUrl || DEFAULT_LEGACY_PROFILE_ENDPOINT);
   }
 }
 
