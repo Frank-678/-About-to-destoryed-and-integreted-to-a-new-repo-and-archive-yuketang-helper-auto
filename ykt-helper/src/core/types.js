@@ -45,6 +45,7 @@ export const DEFAULT_CONFIG = {
     translateApi: '',
     translateApiKey: '',
     translateModel: '',
+    requestTimeoutMs: 120000,
     maxTokens: 1000,
   },
   profiles: [
