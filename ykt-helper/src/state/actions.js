@@ -29,6 +29,7 @@ import { syncActiveLessons, getLessonId } from '../core/active-lessons.js';
 import { createNavigationArbiter, pickLatestActiveLesson } from '../core/navigation-arbiter.js';
 import { shouldAutoAnswerForLesson as evaluateAutoAnswerPolicy } from '../core/auto-answer-policy.js';
 import { registerRuntimeActions } from '../core/runtime-dispatch.js';
+import { onInternalEvent } from '../core/internal-events.js';
 
 let _autoLoopStarted = false;
 let _autoJoinStarted = false;
@@ -363,13 +364,11 @@ function restorePendingProblemStatuses() {
   return restored;
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('ykt:auto-answer-config-changed', () => {
-    restorePendingProblemStatuses();
-    if (ui.config.autoJoinEnabled) actions.maybeStartAutoJoin();
-    else actions.stopAutoJoinLoop();
-  });
-}
+onInternalEvent('auto-answer-config-changed', () => {
+  restorePendingProblemStatuses();
+  if (ui.config.autoJoinEnabled) actions.maybeStartAutoJoin();
+  else actions.stopAutoJoinLoop();
+});
 
 export function hasActiveAIProfile(aiCfg, selectedProfile = null) {
   if (selectedProfile) return !!selectedProfile.apiKey;
