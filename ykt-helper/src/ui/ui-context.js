@@ -1,6 +1,7 @@
 import { storage } from '../core/storage.js';
 import { PROBLEM_TYPE_MAP } from '../core/types.js';
 import { toast } from './toast.js';
+import { emitInternalEvent } from '../core/internal-events.js';
 
 const config = storage.get('config', {});
 config.TYPE_MAP = config.TYPE_MAP || PROBLEM_TYPE_MAP;
@@ -12,9 +13,7 @@ function saveConfig() {
       autoJoinEnabled: !!this.config.autoJoinEnabled,
       autoAnswerOnAutoJoin: !!this.config.autoAnswerOnAutoJoin,
     });
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent?.(new CustomEvent('ykt:auto-answer-config-changed'));
-    }
+    emitInternalEvent('auto-answer-config-changed');
   } catch (error) {
     console.warn('[ui.saveConfig] failed', error);
   }
