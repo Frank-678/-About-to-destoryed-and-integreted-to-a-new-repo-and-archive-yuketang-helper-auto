@@ -113,6 +113,10 @@ export function createAutoAnswerRunner({
         aiContent = await queryAIVision(image, prompt, aiConfig, {
           profileId: answerProfile?.id,
           problemType: problem.problemType,
+          // Automatic answering is latency-sensitive.  The two-step Vision ->
+          // text pipeline can multiply one question into 2-3 sequential AI
+          // calls, so keep unattended answering to one bounded Vision request.
+          disableTwoStep: true,
         });
         parsed = parseAIAnswer(problem, aiContent);
         if (!parsed) throw new Error('无法解析 AI 返回的答案');
