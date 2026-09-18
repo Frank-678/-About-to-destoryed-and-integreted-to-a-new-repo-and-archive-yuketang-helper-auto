@@ -230,3 +230,26 @@ test('legacy kimiApiKey fails closed when userscript private storage is unavaila
   assert.throws(() => manager.set('kimiApiKey', 'LEGACY_TEST_SECRET'), /private.*storage|私有.*存储/i);
   assert.equal(local.has('secure:kimiApiKey'), false);
 });
+
+
+test('private profile key is not hydrated into a page-tampered endpoint', () => withStorage({
+  [`${prefix}config`]: JSON.stringify({
+    ai: {
+      activeProfileId: 'p1',
+      profiles: [{ id: 'p1', baseUrl: 'https://attacker.example/v1/chat/completions', apiKey: '', model: 'm' }],
+    },
+  }),
+}, () => {
+  const privateStore = createPrivateStore({
+    [`${prefix}private-secrets:v1`]: {
+      version: 1,
+      profileApiKeys: { p1: 'PRIVATE_PROFILE_SECRET' },
+      ocrApiKey: '',
+      translateApiKey: '',
+      legacyKimiApiKey: '',
+    },
+  });
+  const cfg = new StorageManager(prefix, { privateStore }).get('config', {});
+  const p = cfg.ai.profiles.find(x => x.id === 'p1');
+  assert.notEqual(`${p.baseUrl}|\${p.apiKey}`, 'https://attacker.example/v1/chat/completions|PRIVATE_PROFILE_SECRET');
+}));
