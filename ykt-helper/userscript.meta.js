@@ -43,6 +43,14 @@ export const meta = `
 // @grant        GM_getTabs
 // @grant        GM_saveTab
 // @grant        unsafeWindow
+// @connect      api.moonshot.cn
+// @connect      api.openai.com
+// @connect      api.deepseek.com
+// @connect      openrouter.ai
+// @connect      generativelanguage.googleapis.com
+// @connect      localhost
+// @connect      127.0.0.1
+// @connect      *
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
 // @require      https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js
