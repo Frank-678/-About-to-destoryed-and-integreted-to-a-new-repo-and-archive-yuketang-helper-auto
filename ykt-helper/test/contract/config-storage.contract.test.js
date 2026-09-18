@@ -180,3 +180,53 @@ test('failed private migration never deletes the only local copy of a legacy sec
   assert.match(globalThis.localStorage.getItem(`${prefix}config`), /must-survive/);
   assert.match(globalThis.localStorage.getItem(`${prefix}kimiApiKey`), /must-also-survive/);
 }));
+
+
+test('secret-bearing config fails closed when userscript private storage is unavailable', () => {
+  const local = new Map();
+  globalThis.localStorage = {
+    getItem(key) { return local.has(key) ? local.get(key) : null; },
+    setItem(key, value) { local.set(key, String(value)); },
+    removeItem(key) { local.delete(key); },
+  };
+
+  const privateStore = {
+    available: () => false,
+    get: () => null,
+    set: () => false,
+    remove: () => false,
+  };
+
+  const manager = new StorageManager('secure:', { privateStore });
+  const config = {
+    ai: {
+      profiles: [{ id: 'p1', apiKey: 'PROFILE_TEST_SECRET' }],
+      activeProfileId: 'p1',
+      ocrApiKey: 'OCR_TEST_SECRET',
+      translateApiKey: 'TRANSLATE_TEST_SECRET',
+    },
+  };
+
+  assert.throws(() => manager.set('config', config), /private.*storage|私有.*存储/i);
+  assert.equal(local.has('secure:config'), false);
+});
+
+test('legacy kimiApiKey fails closed when userscript private storage is unavailable', () => {
+  const local = new Map();
+  globalThis.localStorage = {
+    getItem(key) { return local.has(key) ? local.get(key) : null; },
+    setItem(key, value) { local.set(key, String(value)); },
+    removeItem(key) { local.delete(key); },
+  };
+
+  const privateStore = {
+    available: () => false,
+    get: () => null,
+    set: () => false,
+    remove: () => false,
+  };
+
+  const manager = new StorageManager('secure:', { privateStore });
+  assert.throws(() => manager.set('kimiApiKey', 'LEGACY_TEST_SECRET'), /private.*storage|私有.*存储/i);
+  assert.equal(local.has('secure:kimiApiKey'), false);
+});
