@@ -96,7 +96,7 @@ export function createAutoAnswerRunner({
         profileId: answerProfile?.id || null,
       });
       if (!activeAIProfile) {
-        parsed = makeDefaultAnswer(problem);
+        throw new Error('未配置可用的 AI Profile 或 API Key，自动作答未提交');
       } else {
         try {
           image = await captureSlideImage(status.slideId);
