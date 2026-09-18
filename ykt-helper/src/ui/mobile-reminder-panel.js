@@ -3,6 +3,7 @@ import { REMINDER_CHANNEL_OPTIONS, REMINDER_EVENT_OPTIONS } from '../core/remind
 import { readReminderForm, syncReminderForm } from '../core/settings-form.js';
 import { screenWakeLock } from '../core/screen-wake-lock.js';
 import { ui } from './ui-context.js';
+import { trustedUiHandler } from '../core/trusted-ui-event.js';
 
 let mounted = false;
 let root = null;
@@ -186,14 +187,14 @@ export function mountMobileReminderPanel() {
   $toggle.addEventListener('click', () => setOpen(!root.classList.contains('ykt-mobile-reminder-open')));
   $close.addEventListener('click', () => setOpen(false));
   $closeSheet.addEventListener('click', () => setOpen(false));
-  $sheet.addEventListener('change', () => { void save(); });
-  $test.addEventListener('click', () => {
+  $sheet.addEventListener('change', trustedUiHandler(() => { void save(); }));
+  $test.addEventListener('click', trustedUiHandler(() => {
     ui.notifyProblem({
       problemId: 'MOBILE-REMINDER-TEST',
       body: '【测试提醒】当前已按所选提醒方式发送。',
       options: [],
     }, null, { title: '课堂提醒测试', nativeTitle: '课堂提醒测试' });
-  });
+  }));
 
   sync();
   mounted = true;
