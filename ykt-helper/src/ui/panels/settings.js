@@ -407,7 +407,7 @@ export function mountSettingsPanel() {
   const MAX_SIZE = 2 * 1024 * 1024;
 
   if ($audioFile) {
-    $audioFile.addEventListener('change', (e) => {
+    $audioFile.addEventListener('change', trustedUiHandler((e) => {
       const f = e.target.files?.[0];
       if (!f) return;
       if (f.size > MAX_SIZE) {
@@ -423,11 +423,11 @@ export function mountSettingsPanel() {
         ui.toast('已应用自定义提示音');
       };
       reader.readAsDataURL(f);
-    });
+    }));
   }
 
   if ($applyUrl) {
-    $applyUrl.addEventListener('click', () => {
+    $applyUrl.addEventListener('click', trustedUiHandler(() => {
       const url = ($audioUrl.value || '').trim();
       if (!url) return ui.toast('请输入音频URL');
 
@@ -440,34 +440,34 @@ export function mountSettingsPanel() {
       $audioName.textContent = '当前：（自定义URL）';
       ui._playNotifySound(ui.config.notifyVolume);
       ui.toast('已应用自定义音频URL');
-    });
+    }));
   }
 
   if ($preview) {
-    $preview.addEventListener('click', () => {
+    $preview.addEventListener('click', trustedUiHandler(() => {
       ui._playNotifySound(ui.config.notifyVolume);
-    });
+    }));
   }
 
   if ($clear) {
-    $clear.addEventListener('click', () => {
+    $clear.addEventListener('click', trustedUiHandler(() => {
       ui.setCustomNotifyAudio({ src: '', name: '' });
       $audioName.textContent = '当前：使用内置“叮-咚”提示音';
       ui.toast('已清除自定义音频');
-    });
+    }));
   }
 
   // 测试提醒
   const $btnTest = root.querySelector('#ykt-btn-test-notify');
   if ($btnTest) {
-    $btnTest.addEventListener('click', () => {
+    $btnTest.addEventListener('click', trustedUiHandler(() => {
       const mockProblem = {
         problemId: 'TEST-001',
         body: '【测试题】这是一个测试提醒',
         options: [],
       };
       ui.notifyProblem(mockProblem, { thumbnail: null });
-    });
+    }));
   }
 
   // 关闭按钮
