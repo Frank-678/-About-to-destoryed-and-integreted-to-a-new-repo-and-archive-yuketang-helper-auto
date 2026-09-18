@@ -1,0 +1,32 @@
+name: Compute Runtime Dependency SRI
+
+on:
+  push:
+    branches:
+      - fix/independent-audit-remediation-20260917
+    paths:
+      - '.github/workflows/compute-runtime-sri.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download exact pinned files and calculate SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A urls
+          urls[html2canvas]='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+          urls[jspdf]='https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+          urls[mathjax]='https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.min.js'
+          for name in html2canvas jspdf mathjax; do
+            curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --output "/tmp/$name.js" "${urls[$name]}"
+            bytes="$(wc -c < "/tmp/$name.js" | tr -d ' ')"
+            hex="$(sha256sum "/tmp/$name.js" | awk '{print $1}')"
+            b64="$(openssl dgst -sha256 -binary "/tmp/$name.js" | openssl base64 -A)"
+            printf '%s bytes=%s sha256_hex=%s sha256_base64=%s\n' "$name" "$bytes" "$hex" "$b64"
+          done
