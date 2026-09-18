@@ -9,6 +9,7 @@ import * as ProbListPanel from './panels/problem-list.js';
 import * as ActivePanel from './panels/active-problems.js';
 import * as TutorialPanel from './panels/tutorial.js';
 import { getReminderChannels, getReminderVolume, isReminderEnabled } from '../core/reminder-preferences.js';
+import { onInternalEvent } from '../core/internal-events.js';
 
 // 面板层级管理
 let currentZIndex = 10000000;
@@ -126,7 +127,7 @@ Object.assign(ui, {
     ProbListPanel.mountProblemListPanel();
     ActivePanel.mountActiveProblemsPanel();
     TutorialPanel.mountTutorialPanel(); 
-    window.addEventListener('ykt:open-ai', () => this.showAIPanel(true));
+    onInternalEvent('open-ai', () => this.showAIPanel(true));
   },
 
   // 题目提醒
