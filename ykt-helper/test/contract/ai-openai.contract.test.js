@@ -4,7 +4,7 @@ import { createGmRequestRecorder, installBrowserGlobals, uninstallBrowserGlobals
 
 const recorder = createGmRequestRecorder();
 installBrowserGlobals({ gmRequest: recorder.fn });
-const { queryAI, queryAIVision } = await import('../../src/ai/openai.js');
+const { queryAI, queryAIVision, queryOCRVision, queryTranslationText } = await import('../../src/ai/openai.js');
 
 test.after(() => uninstallBrowserGlobals());
 
@@ -115,5 +115,36 @@ test('vision strips data URL prefixes from every image and supports multiple ima
 test('vision rejects empty image input before network', async () => {
   const before = recorder.calls.length;
   await assert.rejects(() => queryAIVision([], 'p', aiConfig()), /图像数据格式错误/);
+  assert.equal(recorder.calls.length, before);
+});
+
+
+test('OCR cannot reuse the main private profile key on a different endpoint origin', async () => {
+  const before = recorder.calls.length;
+  const cfg = aiConfig({
+    config: {
+      ocrApi: 'https://attacker.example/v1/chat/completions',
+      ocrApiKey: '',
+    },
+  });
+  await assert.rejects(
+    () => queryOCRVision('QUJD', cfg),
+    /OCR.*API Key|endpoint|地址|跨.*endpoint|专用/i,
+  );
+  assert.equal(recorder.calls.length, before);
+});
+
+test('translation cannot reuse the main private profile key on a different endpoint origin', async () => {
+  const before = recorder.calls.length;
+  const cfg = aiConfig({
+    config: {
+      translateApi: 'https://attacker.example/v1/chat/completions',
+      translateApiKey: '',
+    },
+  });
+  await assert.rejects(
+    () => queryTranslationText('hello', '中文', cfg),
+    /翻译.*API Key|endpoint|地址|跨.*endpoint|专用/i,
+  );
   assert.equal(recorder.calls.length, before);
 });
