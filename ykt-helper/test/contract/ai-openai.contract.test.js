@@ -196,3 +196,94 @@ test('step2 timeout does not trigger a third single-step request', async () => {
   );
   assert.equal(recorder.calls.length - before, 2);
 });
+
+
+test('same API credential is serialized so organization concurrency=1 is never exceeded by this script', async () => {
+  const previous = window.GM_xmlhttpRequest;
+  let active = 0;
+  let maxActive = 0;
+  let calls = 0;
+  window.GM_xmlhttpRequest = (options) => {
+    calls += 1;
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    setTimeout(() => {
+      active -= 1;
+      options.onload?.({
+        status: 200,
+        responseText: JSON.stringify(response('ok')),
+        responseHeaders: '',
+      });
+    }, 10);
+    return { abort() {} };
+  };
+
+  try {
+    const cfg = aiConfig();
+    const results = await Promise.all([
+      queryAI('first', cfg),
+      queryAI('second', cfg),
+    ]);
+    assert.deepEqual(results, ['ok', 'ok']);
+    assert.equal(calls, 2);
+    assert.equal(maxActive, 1);
+  } finally {
+    window.GM_xmlhttpRequest = previous;
+  }
+});
+
+test('429 organization concurrency response respects retry hint and succeeds without surfacing failure', async () => {
+  const previous = window.GM_xmlhttpRequest;
+  let calls = 0;
+  window.GM_xmlhttpRequest = (options) => {
+    calls += 1;
+    queueMicrotask(() => {
+      if (calls === 1) {
+        options.onload?.({
+          status: 429,
+          responseText: JSON.stringify({
+            error: {
+              message: 'Your account organization concurrency: 1, request reached max organization concurrency: 1, please try again after 0 seconds',
+            },
+          }),
+          responseHeaders: 'retry-after: 0\r\n',
+        });
+      } else {
+        options.onload?.({
+          status: 200,
+          responseText: JSON.stringify(response('retried-ok')),
+          responseHeaders: '',
+        });
+      }
+    });
+    return { abort() {} };
+  };
+
+  try {
+    const result = await queryAI('retry me', aiConfig());
+    assert.equal(result, 'retried-ok');
+    assert.equal(calls, 2);
+  } finally {
+    window.GM_xmlhttpRequest = previous;
+  }
+});
+
+test('non-rate-limit AI errors are not retried', async () => {
+  const previous = window.GM_xmlhttpRequest;
+  let calls = 0;
+  window.GM_xmlhttpRequest = (options) => {
+    calls += 1;
+    queueMicrotask(() => options.onload?.({
+      status: 401,
+      responseText: JSON.stringify({ error: { message: 'bad key' } }),
+      responseHeaders: '',
+    }));
+    return { abort() {} };
+  };
+  try {
+    await assert.rejects(() => queryAI('no retry', aiConfig()), /401|bad key/);
+    assert.equal(calls, 1);
+  } finally {
+    window.GM_xmlhttpRequest = previous;
+  }
+});
