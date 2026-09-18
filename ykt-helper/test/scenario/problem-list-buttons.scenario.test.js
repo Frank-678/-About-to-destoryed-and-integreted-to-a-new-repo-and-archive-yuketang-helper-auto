@@ -107,6 +107,35 @@ function callsSince(index) {
 
 test.after(() => uninstallBrowserGlobals());
 
+test('synthetic Submit and Force AI clicks cannot cause network or answer side effects', async () => {
+  const controls = resetProblem('synthetic-actions');
+  const before = recorder.calls.length;
+  const originalForceAIAnswer = actions.forceAIAnswer;
+  let forceAICalls = 0;
+  actions.forceAIAnswer = async () => { forceAICalls += 1; return { ok: true }; };
+
+  const synthetic = target => ({
+    type: 'click',
+    isTrusted: false,
+    target,
+    currentTarget: target,
+    preventDefault() {},
+    stopPropagation() {},
+  });
+
+  try {
+    await controls.submit.onclick?.(synthetic(controls.submit));
+    await controls.forceRetry.onclick?.(synthetic(controls.forceRetry));
+    await controls.forceAI.onclick?.(synthetic(controls.forceAI));
+  } finally {
+    actions.forceAIAnswer = originalForceAIAnswer;
+  }
+
+  assert.equal(recorder.calls.length, before);
+  assert.equal(forceAICalls, 0);
+});
+
+
 test('double clicking Submit produces exactly one /answer mutation', async () => {
   const controls = resetProblem('double-submit');
   recorder.respond({ code: 0, data: {} });
