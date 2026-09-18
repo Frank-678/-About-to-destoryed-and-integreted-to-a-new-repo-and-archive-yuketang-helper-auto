@@ -6,6 +6,7 @@ import { submitAnswer } from '../../tsm/answer.js';
 import { createKeyedActionLock } from '../../core/action-lock.js';
 import { getFiniteDeadline, isProblemAnswered, isProblemExpired } from '../../core/problem-view-state.js';
 import { emitInternalEvent, onInternalEvent } from '../../core/internal-events.js';
+import { trustedUiHandler } from '../../core/trusted-ui-event.js';
 
 const L = (...a) => console.log('[雨课堂助手][DBG][problem-list]', ...a);
 const W = (...a) => console.warn('[雨课堂助手][WARN][problem-list]', ...a);
@@ -193,7 +194,7 @@ function bindRowActions(row, e, prob){
 
   // AI 解答：打开 AI 面板并优先使用该题所在页（若拿得到）
   const btnAI = create('button'); btnAI.textContent = 'AI解答';
-  btnAI.onclick = () => {
+  btnAI.onclick = trustedUiHandler(() => {
     const presId = e.presentationId || prob?.presentationId;
     const slideId = (e.slide?.id || e.slideId || prob?.slideId);
     if (slideId) {
@@ -203,12 +204,12 @@ function bindRowActions(row, e, prob){
       });
     }
     emitInternalEvent('open-ai', { problemId: e.problemId });
-  };
+  });
   actionsBar.appendChild(btnAI);
 
   // AI 强制作答：直接分析并提交；过期题目需要二次确认后走补交接口
   const btnForceAI = create('button'); btnForceAI.textContent = 'AI强制作答';
-  btnForceAI.onclick = async () => {
+  btnForceAI.onclick = trustedUiHandler(async () => {
     if (!acquireProblemAction(e.problemId)) return;
     const ps = repo.problemStatus?.get?.(e.problemId);
     const end = getFiniteDeadline(ps?.endTime, e.endTime, prob?.endTime);
@@ -232,12 +233,12 @@ function bindRowActions(row, e, prob){
       row.classList.remove('loading');
       releaseProblemAction(e.problemId);
     }
-  };
+  });
   actionsBar.appendChild(btnForceAI);
 
   // 修改后刷新题目
   const btnRefresh = create('button'); btnRefresh.textContent = '刷新题目';
-  btnRefresh.onclick = async () => {
+  btnRefresh.onclick = trustedUiHandler(async () => {
     row.classList.add('loading');
     try{
       const resp = await fetchProblemDetail(e.problemId);
@@ -251,7 +252,7 @@ function bindRowActions(row, e, prob){
     }finally{
       row.classList.remove('loading');
     }
-  };
+  });
   actionsBar.appendChild(btnRefresh);
 }
 
@@ -314,7 +315,7 @@ function updateRow(row, e, prob){
 
   // 正常提交（过期则提示是否补交）
   const btnSubmit = create('button'); btnSubmit.textContent = '提交';
-  btnSubmit.onclick = async () => {
+  btnSubmit.onclick = trustedUiHandler(async () => {
     if (!acquireProblemAction(e.problemId)) return;
     row.classList.add('loading');
     btnSubmit.disabled = true;
@@ -351,12 +352,12 @@ function updateRow(row, e, prob){
       row.classList.remove('loading');
       releaseProblemAction(e.problemId);
     }
-  };
+  });
   submitBar.appendChild(btnSubmit);
 
   // 强制补交
   const btnForceRetry = create('button'); btnForceRetry.textContent = '强制补交';
-  btnForceRetry.onclick = async () => {
+  btnForceRetry.onclick = trustedUiHandler(async () => {
     if (!acquireProblemAction(e.problemId)) return;
     row.classList.add('loading');
     btnForceRetry.disabled = true;
@@ -377,7 +378,7 @@ function updateRow(row, e, prob){
       row.classList.remove('loading');
       releaseProblemAction(e.problemId);
     }
-  };
+  });
   submitBar.appendChild(btnForceRetry);
 
   editorBox.appendChild(submitBar);
