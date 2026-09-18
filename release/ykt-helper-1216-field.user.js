@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI雨课堂助手（JS版）
 // @namespace    https://github.com/ZaytsevZY/yuketang-helper-auto
-// @version      1.21.6.8
+// @version      1.21.6.9
 // @description  课堂习题提示，AI解答习题
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=yuketang.cn
@@ -1920,8 +1920,19 @@
     return "answer";
   }
   const ANSWER_REQUEST_TIMEOUT_MS = 15e3;
-  function sleep$1(ms) {
+  function sleep$2(ms) {
     return new Promise(r => setTimeout(r, Math.max(0, ms | 0)));
+  }
+  function answerBusinessError(resp, context = "提交") {
+    const code = Number(resp?.code);
+    const raw = String(resp?.msg || "请求失败");
+    let message = `${raw} (${resp?.code})`;
+    if (code === 50028) message = "题目已提交过，普通提交被服务器拒绝；请使用“强制补交” (50028)"; else if (code === 50026) message = "题目已结束，普通提交被服务器拒绝；请使用“强制补交” (50026)";
+    const error = new Error(message);
+    error.code = Number.isFinite(code) ? code : resp?.code;
+    error.serverMessage = raw;
+    error.context = context;
+    return error;
   }
   function calcAutoWaitMs() {
     const base = Math.max(0, ui?.config?.autoAnswerDelay ?? 0);
@@ -1989,7 +2000,7 @@
     };
     const resp = await xhrPost(url, payload, headers);
     if (resp.code === 0) return resp;
-    throw new Error(`${resp.msg} (${resp.code})`);
+    throw answerBusinessError(resp, "answer");
   }
   /**
    * POST /api/v3/lesson/problem/retry
@@ -2013,7 +2024,7 @@
       } ]
     };
     const resp = await xhrPost(url, payload, headers);
-    if (resp.code !== 0) throw new Error(`${resp.msg} (${resp.code})`);
+    if (resp.code !== 0) throw answerBusinessError(resp, "retry");
     const okList = resp?.data?.success || [];
     const targetId = String(problem.problemId);
     const confirmed = Array.isArray(okList) && okList.some(id => String(id) === targetId);
@@ -2056,7 +2067,7 @@
       const ms = typeof waitMs === "number" ? Math.max(0, waitMs) : calcAutoWaitMs();
       if (ms > 0) {
         const guard = typeof endTime === "number" ? Math.max(0, endTime - Date.now() - 80) : ms;
-        await sleep$1(Math.min(ms, guard));
+        await sleep$2(Math.min(ms, guard));
       }
     }
     const now = Date.now();
@@ -2239,52 +2250,122 @@
   function isAITimeoutError(error) {
     return /超时|timeout/i.test(String(error?.message || error || ""));
   }
+  const AI_RATE_LIMIT_MAX_RETRIES = 2;
+  const aiRequestQueues = new Map;
+  function sleep$1(ms) {
+    return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+  }
+  function requestQueueKey(profile) {
+    const url = new URL(makeChatUrl(profile));
+    // The API key is already present in runtime memory.  Keeping it only as an
+    // in-memory Map key lets profiles that share one account also share one
+    // concurrency slot without logging or persisting the credential.
+        return `${url.origin}\n${String(profile?.apiKey || "")}`;
+  }
+  async function withAIRequestSlot(profile, task) {
+    const key = requestQueueKey(profile);
+    const previous = aiRequestQueues.get(key) || Promise.resolve();
+    let release;
+    const gate = new Promise(resolve => {
+      release = resolve;
+    });
+    const tail = previous.catch(() => {}).then(() => gate);
+    aiRequestQueues.set(key, tail);
+    await previous.catch(() => {});
+    try {
+      return await task();
+    } finally {
+      release();
+      if (aiRequestQueues.get(key) === tail) aiRequestQueues.delete(key);
+    }
+  }
+  function retryAfterMs(response) {
+    const headers = String(response?.responseHeaders || "");
+    const headerMatch = headers.match(/(?:^|\r?\n)retry-after:\s*([0-9.]+)/i);
+    if (headerMatch) {
+      const seconds = Number(headerMatch[1]);
+      if (Number.isFinite(seconds) && seconds >= 0) return Math.min(1e4, seconds * 1e3);
+    }
+    try {
+      const body = JSON.parse(String(response?.responseText || "{}"));
+      const message = String(body?.error?.message || body?.message || "");
+      const match = message.match(/after\s+([0-9.]+)\s*(milliseconds?|ms|seconds?|s)\b/i);
+      if (match) {
+        const amount = Number(match[1]);
+        if (Number.isFinite(amount) && amount >= 0) {
+          const isMs = /^m/i.test(match[2]);
+          return Math.min(1e4, isMs ? amount : amount * 1e3);
+        }
+      }
+    } catch {}
+    return null;
+  }
+  function httpErrorFromResponse(response) {
+    const status = Number(response?.status);
+    let message = `AI 请求失败: ${status || "unknown"}`;
+    let code = null;
+    try {
+      const data = JSON.parse(String(response?.responseText || "{}"));
+      if (data?.error?.message) message += ` - ${data.error.message}`; else if (data?.message) message += ` - ${data.message}`;
+      if (data?.error?.code) {
+        code = data.error.code;
+        message += ` (${code})`;
+      }
+    } catch {
+      const raw = String(response?.responseText || "").trim();
+      if (raw) message += ` - ${raw}`;
+    }
+    const error = new Error(message);
+    error.status = status;
+    error.code = code;
+    error.retryAfterMs = retryAfterMs(response);
+    return error;
+  }
+  function requestChatCompletion(profile, payload, debugLabel, timeoutMs) {
+    const url = makeChatUrl(profile);
+    return withAIRequestSlot(profile, async () => {
+      for (let attempt = 0; ;attempt += 1) try {
+        return await new Promise((resolve, reject) => {
+          gm.xhr({
+            method: "POST",
+            url: url,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${profile.apiKey}`
+            },
+            data: JSON.stringify(withProfileTemperature(profile, payload)),
+            timeout: timeoutMs,
+            onload: res => {
+              try {
+                console.log(`[雨课堂助手]${debugLabel} Status:`, res.status);
+                if (Number(res.status) !== 200) {
+                  reject(httpErrorFromResponse(res));
+                  return;
+                }
+                resolve(JSON.parse(res.responseText));
+              } catch (error) {
+                reject(new Error(`解析API响应失败: ${error.message}`));
+              }
+            },
+            onerror: () => reject(new Error("网络请求失败")),
+            ontimeout: () => reject(new Error("AI 请求超时"))
+          });
+        });
+      } catch (error) {
+        const rateLimited = Number(error?.status) === 429;
+        if (!rateLimited || attempt >= AI_RATE_LIMIT_MAX_RETRIES) throw error;
+        const waitMs = Number.isFinite(error?.retryAfterMs) ? Math.max(0, error.retryAfterMs) : Math.min(4e3, 1e3 * (attempt + 1));
+        console.warn("[雨课堂助手][WARN][AI] 429 并发/限流，等待后重试", {
+          attempt: attempt + 1,
+          waitMs: waitMs
+        });
+        await sleep$1(waitMs);
+      }
+    });
+  }
   // 通用 OpenAI 协议聊天请求封装（用于 Vision 两步调用）
     function chatCompletion(profile, payload, debugLabel = "[AI OpenAI]", timeoutMs = DEFAULT_AI_REQUEST_TIMEOUT_MS) {
-    const url = makeChatUrl(profile);
-    return new Promise((resolve, reject) => {
-      gm.xhr({
-        method: "POST",
-        url: url,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${profile.apiKey}`
-        },
-        data: JSON.stringify(withProfileTemperature(profile, payload)),
-        timeout: timeoutMs,
-        onload: res => {
-          try {
-            console.log(`[雨课堂助手]${debugLabel} Status:`, res.status);
-            console.log(`[雨课堂助手]${debugLabel} Response:`, res.responseText);
-            if (res.status !== 200) {
-              let errorMessage = `AI 请求失败: ${res.status}`;
-              try {
-                const errorData = JSON.parse(res.responseText);
-                if (errorData.error?.message) errorMessage += ` - ${errorData.error.message}`;
-                if (errorData.error?.code) errorMessage += ` (${errorData.error.code})`;
-              } catch {
-                errorMessage += ` - ${res.responseText}`;
-              }
-              reject(new Error(errorMessage));
-              return;
-            }
-            const data = JSON.parse(res.responseText);
-            resolve(data);
-          } catch (e) {
-            console.error(`[雨课堂助手]${debugLabel} 解析响应失败:`, e);
-            reject(new Error(`解析API响应失败: ${e.message}`));
-          }
-        },
-        onerror: err => {
-          console.error(`[雨课堂助手]${debugLabel} 网络请求失败:`, err);
-          reject(new Error("网络请求失败"));
-        },
-        ontimeout: () => {
-          console.error(`[雨课堂助手]${debugLabel} 请求超时`);
-          reject(new Error("AI 请求超时"));
-        }
-      });
-    });
+    return requestChatCompletion(profile, payload, debugLabel, timeoutMs);
   }
   async function singleStepVisionCall(profile, cleanBase64List, textPrompt, options = {}) {
     const visionModel = profile.visionModel || profile.model;
