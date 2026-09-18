@@ -860,10 +860,16 @@ export function updatePresentationList() {
 
     const titleEl = document.createElement('div');
     titleEl.className = 'presentation-title';
-    titleEl.innerHTML = `
-      <span>${presentation.title || `课件 ${id}`}</span>
-      <i class="fas fa-download download-btn" title="下载课件"></i>
-    `;
+
+    const titleText = document.createElement('span');
+    titleText.textContent = presentation.title || `课件 ${id}`;
+    titleEl.appendChild(titleText);
+
+    const downloadIcon = document.createElement('i');
+    downloadIcon.className = 'fas fa-download download-btn';
+    downloadIcon.setAttribute('title', '下载课件');
+    titleEl.appendChild(downloadIcon);
+
     cont.appendChild(titleEl);
 
     titleEl.querySelector('.download-btn')?.addEventListener('click', (e) => {
