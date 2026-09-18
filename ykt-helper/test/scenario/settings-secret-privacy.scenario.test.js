@@ -108,6 +108,29 @@ test('blank secret fields preserve existing private credentials when saving unre
   assert.equal(ui.config.ai.profiles[0].name, 'Renamed Profile');
 });
 
+
+
+test('explicit clear controls remove saved credentials only after Save', async () => {
+  ui.config.ai.profiles[0].apiKey = 'PROFILE_DOM_SECRET';
+  ui.config.ai.ocrApiKey = 'OCR_DOM_SECRET';
+  ui.config.ai.translateApiKey = 'TRANSLATE_DOM_SECRET';
+
+  byId('ykt-ai-api-key-clear').click();
+  byId('ykt-ai-ocr-api-key-clear').click();
+  byId('ykt-ai-translate-api-key-clear').click();
+
+  assert.equal(ui.config.ai.profiles[0].apiKey, 'PROFILE_DOM_SECRET');
+  assert.equal(ui.config.ai.ocrApiKey, 'OCR_DOM_SECRET');
+  assert.equal(ui.config.ai.translateApiKey, 'TRANSLATE_DOM_SECRET');
+
+  byId('ykt-btn-settings-save').click();
+  await flushAsyncHandler();
+
+  assert.equal(ui.config.ai.profiles[0].apiKey, '');
+  assert.equal(ui.config.ai.ocrApiKey, '');
+  assert.equal(ui.config.ai.translateApiKey, '');
+});
+
 test.after(async () => {
   await screenWakeLock.dispose();
   restoreTemplateMaterializer();
